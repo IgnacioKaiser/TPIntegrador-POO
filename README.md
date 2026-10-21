@@ -1,34 +1,69 @@
-# Servidor inicial del Trabajo Practico Integrador
+# TP integrador — comunicación v0.2 reorganizada
 
-Esta base sigue la separacion usada en C4:
+Mismo funcionamiento de robot_rpc_v0_2, organizado según el acuerdo del grupo. Servidor C++ con XmlRpc++ del profesor, cliente Python por consola y firmware original completo. No se incorporan nuevas funciones de robot.
 
-- `src/server/main.cpp`: punto de entrada y reporte de errores.
-- `ServerController`: valida el puerto, configura el servidor e inicia el ciclo RPC.
-- `ServerModel`: registra las operaciones de ejemplo `ServerTest` y `Eco`.
-- `lib/xmlrpc`: implementacion XML-RPC sobre TCP usada por el servidor.
+## Organización
 
-Las operaciones son un punto de partida para probar la comunicacion; deben
-reemplazarse o ampliarse con las operaciones que defina la consigna especifica.
-La introspeccion XML-RPC esta activada para consultar los metodos publicados.
+- `server/xmlrpc/`: biblioteca XmlRpc++ original, licencia y ejemplos, separados del código propio.
+- `server/include/robotrpc/` y `server/src/`: clases de mensajes, servicio y servidor.
+- `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, sin modificar. Se compilan pero todavía no se utilizan para registrar eventos.
+- `server/examples/tp2_logger/`: main y datos de ejemplo originales del logger.
+- `server/tests/`: pruebas C++ y de integración cliente-servidor.
+- `server/Makefile`: compilación del servidor, bibliotecas y pruebas.
+- `client/main.py`: entrada alternativa al cliente.
+- `client/robot_client/cli.py`: interfaz de consola.
+- `client/robot_client/cliente.py`: comunicación XML-RPC y servicios.
+- `client/robot_client/mensaje.py`: objetos de mensaje y validación.
+- `client/tests/`: pruebas unitarias Python.
+- `firmware/arduino/robotArm_v0.62sim/`: carpeta completa original del firmware, con sus nombres y contenidos intactos.
+- `data/db/`, `data/logs/`, `data/trayectorias/`: carpetas reservadas, sin datos iniciales; incluyen .gitkeep para conservarlas en Git.
+- `docs/`: contrato, procedencia, migración, reorganización y verificación.
+- `.vscode/`: tareas de compilación y pruebas e includes para VS Code.
 
-## Compilar
+Los nombres de módulos Python se conservan porque la propuesta del grupo permite ajustarlos y ya separan interfaz, comunicación y modelos. No hay copias duplicadas con nombres alternativos.
 
-Desde esta carpeta:
+## Ejecutar en Linux
 
-```text
-cmake -S . -B build
-cmake --build build
+Descomprimir y abrir `TP_integrador_real` en VS Code. Detener con Ctrl+C cualquier servidor anterior que use el puerto 8080.
+
+Se requieren build-essential y Python 3.10 o posterior. Si ya están instalados, no hay que instalar nada más. No se utiliza libxmlrpc-c++8-dev ni se requieren paquetes pip.
+
+Terminal 1, desde la raíz del proyecto:
+
+```bash
+cd server
+make
+./build/robot_server
 ```
 
-## Ejecutar
+Terminal 2, desde la raíz del proyecto:
 
-```text
-build\Debug\servidor.exe 8080
+```bash
+cd client
+python3 main.py ping
+python3 main.py eco "Hola desde Python"
 ```
 
-En generadores de configuracion unica el ejecutable suele quedar en
-`build\servidor.exe`. El puerto debe ser un entero entre 1 y 65535.
+También funcionan los comandos anteriores `python3 -m robot_client ping` y `python3 -m robot_client eco "Hola desde Python"`, ejecutados desde client. Sin argumentos se abre el menú interactivo.
 
-El servidor usa el comportamiento de `XmlRpcServer::bindAndListen` de C4 y
-escucha en las interfaces disponibles. No publicar este servidor en una red no
-confiable sin agregar autenticacion y controles de acceso.
+Resultado de ping: `[OK] pong: servidor C++ disponible` y el ID de la solicitud.
+
+Otro puerto: en server, `./build/robot_server --port 8081`; en client, `python3 main.py --url http://127.0.0.1:8081/RPC2 ping`.
+
+## Pruebas y compilación
+
+Desde la raíz:
+
+```bash
+make -C server test
+```
+
+También se puede ejecutar `make test` estando dentro de server. `make -C server examples` compila los tres ejemplos originales de XmlRpc++ como ejecutables separados. `make -C server clean` elimina server/build. Ctrl+Shift+B en VS Code compila desde server.
+
+## Alcance conservado
+
+El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, el servicio procesa ping/eco y devuelve la respuesta con el mismo ID. El dominio no depende de XmlRpc++. Ver docs/CONTRATO.md.
+
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. No hay todavía autenticación, SQLite, puerto serie ni ejecución de G-Code. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+
+El firmware se conserva como recurso y no se compila con el Makefile del servidor. Los warnings de parámetros no utilizados provienen del código original de XmlRpc++.

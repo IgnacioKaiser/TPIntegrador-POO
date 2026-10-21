@@ -1,0 +1,8 @@
+2026-10-07 00:05:44,DEBUG,Inicio de depuracion,main,20,,
+2026-10-07 00:05:44,INFO,Aplicacion iniciada,main,25,,
+2026-10-07 00:05:44,WARNING,Advertencia de prueba,main,30,,
+2026-10-07 00:05:44,ERROR,Error de lectura,File_396,35,,
+2026-10-07 00:05:44,CRITICAL,Error critico del sistema,main,40,,
+2026-10-07 00:05:44,INFO,Solicitud de estado,,0,usuario_01,dispositivo_01
+2026-10-07 00:05:44,ERROR,Peticion rechazada,,0,usuario_02,dispositivo_02
+2026-10-07 00:05:44,WARNING,Solicitud con advertencia,,0,usuario_01,dispositivo_03
