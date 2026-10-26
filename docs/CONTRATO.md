@@ -1,49 +1,187 @@
-# Contrato de comunicación — versión 1, aplicación v0.2
+# Contrato de comunicación cliente-servidor
 
-## Transporte
+## 1. Objetivo
 
-- XML-RPC por HTTP, ruta utilizada `/RPC2`. XmlRpc++ no restringe por sí misma la ruta HTTP.
-- Dirección predeterminada: `http://127.0.0.1:8080/RPC2`.
-- Método de aplicación: `robot.intercambiar`.
-- Entrada: exactamente un parámetro XML-RPC de tipo `struct`.
-- Salida normal: un `struct` con el mismo esquema lógico.
-- La biblioteca puede exponer además sus métodos de introspección; no constituyen servicios del robot.
+Este documento establece cómo intercambian mensajes el cliente y el servidor del proyecto de control del robot.
 
-## MensajeRPC
+El cliente solicita operaciones; el servidor valida las solicitudes, ejecuta las acciones permitidas y devuelve respuestas. Cada parámetro se identifica mediante **un nombre y un tipo de dato**.
 
-Se requieren exactamente seis campos. Todos son `string` XML-RPC en esta primera versión.
+## 2. Transporte
 
-| Campo | Solicitud | Respuesta |
+- Protocolo: **XML-RPC sobre HTTP**.
+- Método remoto: **`robot.intercambiar`**.
+- Cada llamada recibe **un único argumento XML-RPC**, de tipo `struct`, que representa la solicitud completa.
+- La respuesta del método es también **un único `struct` XML-RPC**.
+- La biblioteca XML-RPC se encarga de codificar y decodificar los valores. El cliente no debe construir XML manualmente.
+
+## 3. Estructura general del mensaje
+
+Todos los mensajes tienen exactamente los siguientes seis campos:
+
+| Campo | Tipo XML-RPC | Descripción |
 | --- | --- | --- |
-| `version` | `1` | `1` |
-| `id` | Identificador de 1–64 caracteres ASCII: letras, dígitos, guion o guion bajo. | Mismo id. |
-| `tipo` | `solicitud` | `respuesta` |
-| `operacion` | Identificador de 1–32 caracteres con el mismo alfabeto que id. | Misma operación. |
-| `contenido` | Texto, incluso vacío, hasta 8192 bytes UTF-8. | Resultado textual. |
-| `codigo` | Cadena vacía. | Identificador no vacío, hasta 64 caracteres. |
+| `id` | `string` | Identificador de la solicitud, utilizado para relacionarla con su respuesta. |
+| `tipo` | `string` | `solicitud` o `respuesta`. |
+| `operacion` | `string` | Nombre de la acción solicitada. |
+| `parametros` | `struct` | Parámetros de entrada, identificados por nombre. |
+| `resultado` | `struct` | Datos devueltos por el servidor, identificados por nombre. |
+| `codigo` | `string` | Resultado de la operación: vacío en solicitudes y código de estado en respuestas. |
 
-El contenido admite caracteres XML 1.0 del plano Unicode básico (BMP). Se conserva esta restricción del contrato anterior para mantener compatibilidad. Se rechazan controles no admitidos por XML y caracteres fuera del BMP; no se hace una sustitución silenciosa. Los finales de línea están sujetos a normalización XML. Los ids generados por Python son UUID sin guiones; el servidor no exige ese formato particular.
+Estos seis campos siempre están presentes. Cuando `parametros` o `resultado` no tienen datos, se envían como un `struct` vacío, no como texto vacío ni como `nil`.
 
-No hay JSON contenido dentro de strings XML, punteros, memoria de objetos, pickle ni código ejecutable. Cada extremo tiene su propia clase y comparte el esquema.
+## 4. Tipos de datos admitidos
 
-## Operaciones
+Dentro de `parametros` y `resultado` se admiten:
 
-| Operación | Contenido de solicitud | Resultado |
+| Tipo XML-RPC | Tipo habitual en C++ | Tipo habitual en Python |
 | --- | --- | --- |
-| `ping` | Puede estar vacío; se ignora. | Código `OK`, contenido `pong: servidor C++ disponible`. |
-| `eco` | Texto. | Código `OK`, contenido recibido. |
-| Otra operación sintácticamente válida | Cualquier texto permitido. | Código `OPERACION_NO_SOPORTADA`. |
+| `string` | `std::string` | `str` |
+| `int` / `i4` | `int` de 32 bits | `int` dentro del rango admitido |
+| `double` | `double` | `float` |
+| `boolean` | `bool` | `bool` |
+| `array` | `XmlRpcValue` de tipo arreglo | `list` |
+| `struct` | `XmlRpcValue` de tipo estructura | `dict` |
 
-## Errores y correlación
+Los arreglos y estructuras pueden contener otros valores de los tipos permitidos.
 
-- Un mensaje que no cumple el contrato produce un XML-RPC Fault. No se inventa una respuesta normal si no se puede reconstruir una solicitud válida.
-- Una operación desconocida con mensaje válido produce una respuesta normal con código de aplicación de error y mantiene el id.
-- Un fallo de red, HTTP, parseo o timeout se traduce a `ErrorComunicacion` en el cliente.
-- El cliente comprueba que versión, id, operación y tipo de respuesta sean válidos antes de mostrarla.
-- No se implementan reintentos automáticos ni deduplicación persistente de ids. El id es correlación, no una garantía de ejecución exactamente una vez.
+No se utilizarán `nil`, `dateTime.iso8601` ni `base64` en los mensajes de aplicación. Los valores `double` deben ser finitos (no `NaN` ni infinito).
 
-## Evolución
+**En C++**, la clase `XmlRpc::XmlRpcValue` de la biblioteca XML-RPC existente representará los valores y las estructuras del mensaje. **En Python**, se utilizarán los tipos nativos compatibles con XML-RPC.
 
-Este contrato pequeño permite empezar. Antes de autenticar o controlar el robot, se acordarán credenciales, parámetros tipados y resultados estructurados. Ese cambio de esquema requiere una nueva versión del contrato y actualización coordinada de ambos extremos; no agregar campos unilateralmente a versión 1.
+## 5. Reglas de identificación y nombres
 
-Las nuevas operaciones se implementan detrás de la capa de servicios. Las CLI no deben construir XML ni abrir el puerto serie.
+- `id`: entre 1 y 64 caracteres; letras ASCII, dígitos, guion (`-`) y guion bajo (`_`). Cada solicitud debe contar con su propio identificador.
+- `operacion`: entre 1 y 64 caracteres; comienza con una letra ASCII y luego admite letras, dígitos, guion bajo (`_`), guion (`-`) o punto (`.`).
+- Nombres de parámetros y resultados: comienzan con una letra ASCII y admiten letras, dígitos y guion bajo (`_`); máximo 64 caracteres. Se recomienda `snake_case`.
+- Los nombres distinguen mayúsculas y minúsculas.
+
+## 6. Solicitudes
+
+Una solicitud debe cumplir estas condiciones:
+
+- `tipo` vale `solicitud`.
+- `parametros` contiene los valores de entrada definidos para la operación.
+- `resultado` es un `struct` vacío.
+- `codigo` es una cadena vacía (`""`).
+- Los campos obligatorios, los tipos y los rangos de cada parámetro se comprueban antes de ejecutar la operación.
+- Un parámetro desconocido o un tipo incorrecto se considera un error de validación, salvo que la definición de la operación indique expresamente lo contrario.
+
+### Ejemplo: solicitud de movimiento
+
+Representación conceptual, equivalente al `struct` XML-RPC que se envía por la red:
+
+```python
+{
+    "id": "sol-001",
+    "tipo": "solicitud",
+    "operacion": "mover",
+    "parametros": {
+        "x": 120.5,
+        "y": 80.0,
+        "velocidad": 50
+    },
+    "resultado": {},
+    "codigo": ""
+}
+```
+
+**Nota:** `mover` es un ejemplo de formato. Sus parámetros definitivos y sus rangos deberán ajustarse a las unidades, capacidades y requisitos del robot antes de implementar esa operación.
+
+## 7. Respuestas
+
+Una respuesta debe cumplir estas condiciones:
+
+- `tipo` vale `respuesta`.
+- `id` y `operacion` coinciden con los de la solicitud recibida.
+- `parametros` es un `struct` vacío.
+- `resultado` contiene los datos de salida de la operación. Puede estar vacío cuando no hay datos que devolver.
+- `codigo` informa si la operación terminó correctamente o por qué no pudo completarse.
+
+### Ejemplo: respuesta correcta
+
+```python
+{
+    "id": "sol-001",
+    "tipo": "respuesta",
+    "operacion": "mover",
+    "parametros": {},
+    "resultado": {
+        "mensaje": "Solicitud procesada"
+    },
+    "codigo": "OK"
+}
+```
+
+Este ejemplo **no implica** que el robot haya alcanzado físicamente el destino: cada operación deberá especificar si su respuesta confirma recepción, ejecución o finalización.
+
+## 8. Códigos de respuesta
+
+| Código | Significado |
+| --- | --- |
+| `OK` | Operación completada según la definición de esa operación. |
+| `VALIDACION` | Faltan parámetros, hay tipos incorrectos o valores fuera de rango. |
+| `NO_AUTENTICADO` | La operación requiere una sesión o autenticación válida. |
+| `PERMISO_DENEGADO` | El usuario no tiene autorización para la operación. |
+| `OPERACION_NO_SOPORTADA` | El servidor no reconoce la operación solicitada. |
+| `ESTADO_INVALIDO` | La operación no puede ejecutarse en el estado actual del sistema. |
+| `RECURSO_NO_ENCONTRADO` | No existe el recurso solicitado. |
+| `ERROR_INTERNO` | Fallo interno al procesar la operación. |
+
+En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de tipo `string` con una explicación legible.
+
+### Ejemplo: error de validación
+
+```python
+{
+    "id": "sol-002",
+    "tipo": "respuesta",
+    "operacion": "mover",
+    "parametros": {},
+    "resultado": {
+        "mensaje": "El parametro x debe ser numerico"
+    },
+    "codigo": "VALIDACION"
+}
+```
+
+## 9. Diferencia entre errores de protocolo y errores de aplicación
+
+**Errores de protocolo:** si no se puede interpretar la llamada XML-RPC, falta un campo obligatorio de la estructura general, un campo general tiene un tipo inválido o la solicitud no respeta el formato externo, el servidor devuelve un **XML-RPC Fault**. En estos casos, puede no ser posible construir una respuesta de aplicación confiable.
+
+**Errores de aplicación:** si el mensaje general está bien formado, pero la operación es desconocida, no tiene permiso o sus parámetros son inválidos, el servidor devuelve una **respuesta normal** con el código correspondiente.
+
+**Errores de comunicación:** si la conexión falla o no llega una respuesta válida, el cliente informa un error de comunicación. No debe presentar ese caso como una confirmación de ejecución.
+
+## 10. Definición de las operaciones
+
+El esquema general no determina automáticamente las operaciones disponibles. Para cada operación implementada se documentarán:
+
+1. Su nombre exacto.
+2. Los parámetros obligatorios y opcionales, con nombre, tipo, unidad y restricciones.
+3. Los campos devueltos en `resultado` y sus tipos.
+4. Los permisos necesarios.
+5. El significado de `OK`: recepción, aceptación, ejecución o finalización.
+6. Los errores que puede devolver.
+
+Las operaciones de prueba existentes, como `ping` y `eco`, pueden adaptarse a este esquema. Las operaciones de movimiento, consulta, autenticación y administración se incorporarán cuando se definan sus requisitos específicos.
+
+## 11. Responsabilidades de cada componente
+
+**Cliente Python:** prepara los mensajes, solicita una operación mediante XML-RPC, recibe la respuesta y presenta el resultado al usuario. No genera G-Code ni controla el Arduino directamente.
+
+**Servidor C++:** recibe y valida los mensajes con la biblioteca XML-RPC, identifica la operación, comprueba condiciones y permisos, ejecuta la lógica correspondiente y construye la respuesta. La conversión de operaciones de movimiento a G-Code y el envío al Arduino corresponden al lado servidor, en sus componentes específicos.
+
+**Arduino:** utiliza el firmware proporcionado para interpretar las órdenes que recibe. Este contrato describe la comunicación entre el cliente y el servidor, no el formato de comunicación serial con Arduino.
+
+## 12. Seguridad y registro
+
+- Se validan los tipos, rangos y permisos en el servidor, aunque el cliente haya realizado comprobaciones previas.
+- Si se incorporan credenciales o tokens, deberán definirse como parámetros con nombre y tipo; no deberán registrarse sus valores en logs.
+- Los errores no deben exponer contraseñas ni información interna innecesaria.
+- El uso inicial de HTTP/XML-RPC en un entorno de pruebas local no debe interpretarse como protección suficiente para una red no confiable.
+
+## 13. Compatibilidad y mantenimiento
+
+El cliente y el servidor deben respetar los mismos nombres, tipos y significados. Si se modifica la estructura general o la definición de una operación, se actualizarán este documento y las implementaciones y pruebas correspondientes de ambos lados.
+
+La biblioteca XML-RPC se reutilizará para transportar y representar los valores; no se implementará manualmente un parser XML adicional para estos mensajes.
