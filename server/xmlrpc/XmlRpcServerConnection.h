@@ -39,7 +39,7 @@ namespace XmlRpc {
     static const std::string FAULTSTRING;
 
     //! Constructor
-    XmlRpcServerConnection(int fd, XmlRpcServer* server, bool deleteOnClose = false);
+    XmlRpcServerConnection(SocketHandle fd, XmlRpcServer* server, bool deleteOnClose = false);
     //! Destructor
     virtual ~XmlRpcServerConnection();
 

@@ -69,8 +69,8 @@ XmlRpcServer::findMethod(const std::string& name) const
 bool 
 XmlRpcServer::bindAndListen(int port, int backlog /*= 5*/)
 {
-  int fd = XmlRpcSocket::socket();
-  if (fd < 0)
+  SocketHandle fd = XmlRpcSocket::socket();
+  if (fd == InvalidSocket)
   {
     XmlRpcUtil::error("XmlRpcServer::bindAndListen: Could not create socket (%s).", XmlRpcSocket::getErrorMsg().c_str());
     return false;
@@ -110,7 +110,7 @@ XmlRpcServer::bindAndListen(int port, int backlog /*= 5*/)
     return false;
   }
 
-  XmlRpcUtil::log(2, "XmlRpcServer::bindAndListen: server listening on port %d fd %d", port, fd);
+  XmlRpcUtil::log(2, "XmlRpcServer::bindAndListen: server listening on port %d fd %llu", port, static_cast<unsigned long long>(fd));
 
   // Notify the dispatcher to listen on this source when we are in work()
   _disp.addSource(this, XmlRpcDispatch::ReadableEvent);
@@ -144,9 +144,9 @@ XmlRpcServer::handleEvent(unsigned mask)
 void
 XmlRpcServer::acceptConnection()
 {
-  int s = XmlRpcSocket::accept(this->getfd());
-  XmlRpcUtil::log(2, "XmlRpcServer::acceptConnection: socket %d", s);
-  if (s < 0)
+  SocketHandle s = XmlRpcSocket::accept(this->getfd());
+  XmlRpcUtil::log(2, "XmlRpcServer::acceptConnection: socket %llu", static_cast<unsigned long long>(s));
+  if (s == InvalidSocket)
   {
     //this->close();
     XmlRpcUtil::error("XmlRpcServer::acceptConnection: Could not accept connection (%s).", XmlRpcSocket::getErrorMsg().c_str());
@@ -166,7 +166,7 @@ XmlRpcServer::acceptConnection()
 
 // Create a new connection object for processing requests from a specific client.
 XmlRpcServerConnection*
-XmlRpcServer::createConnection(int s)
+XmlRpcServer::createConnection(SocketHandle s)
 {
   // Specify that the connection object be deleted when it is closed
   return new XmlRpcServerConnection(s, this, true);

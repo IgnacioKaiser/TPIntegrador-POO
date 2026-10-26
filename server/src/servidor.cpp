@@ -3,7 +3,11 @@
 #include "XmlRpc.h"
 #include "XmlRpcSocket.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
+#endif
 #include <csignal>
 #include <iostream>
 #include <string>
@@ -22,9 +26,9 @@ class ServidorLocal final : public XmlRpc::XmlRpcServer {
 public:
     void abrir(unsigned short puerto) {
 
-        const int descriptor = XmlRpc::XmlRpcSocket::socket();
+        const auto descriptor = XmlRpc::XmlRpcSocket::socket();
 
-        if (descriptor < 0)
+        if (descriptor == XmlRpc::InvalidSocket)
             throw ErrorServidor(
                 "No se pudo crear el socket.");
 
@@ -35,8 +39,18 @@ public:
         direccion.sin_port = htons(puerto);
         direccion.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
+        // En Windows SO_REUSEADDR permitiria compartir el puerto con otro proceso.
+#ifdef _WIN32
+        const int exclusivo = 1;
+        const bool opcionCorrecta = ::setsockopt(
+            descriptor, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+            reinterpret_cast<const char*>(&exclusivo), sizeof(exclusivo)) == 0;
+#else
+        const bool opcionCorrecta = XmlRpc::XmlRpcSocket::setReuseAddr(descriptor);
+#endif
+
         if (!XmlRpc::XmlRpcSocket::setNonBlocking(descriptor) ||
-            !XmlRpc::XmlRpcSocket::setReuseAddr(descriptor) ||
+            !opcionCorrecta ||
             ::bind(
                 descriptor,
                 reinterpret_cast<const sockaddr*>(&direccion),
@@ -155,25 +169,15 @@ void ServidorXmlRpc::ejecutar() {
 
     detener = 0;
 
-    struct sigaction accion{};
-    accion.sa_handler = solicitarCierre;
-    sigemptyset(&accion.sa_mask);
+    if (std::signal(SIGINT, solicitarCierre) == SIG_ERR ||
+        std::signal(SIGTERM, solicitarCierre) == SIG_ERR)
+        throw ErrorServidor("No se pudieron configurar las senales de cierre.");
 
-    if (
-        sigaction(SIGINT, &accion, nullptr) != 0 ||
-        sigaction(SIGTERM, &accion, nullptr) != 0
-    ) {
-        throw ErrorServidor(
-            "No se pudieron configurar las senales de cierre.");
-    }
-
-    struct sigaction ignorar{};
-    ignorar.sa_handler = SIG_IGN;
-    sigemptyset(&ignorar.sa_mask);
-
-    if (sigaction(SIGPIPE, &ignorar, nullptr) != 0)
-        throw ErrorServidor(
-            "No se pudo configurar SIGPIPE.");
+#ifndef _WIN32
+    // Linux puede generar SIGPIPE si un cliente cierra su conexion.
+    if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+        throw ErrorServidor("No se pudo configurar SIGPIPE.");
+#endif
 
     std::cout
         << "Servidor XML-RPC\n"

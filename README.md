@@ -22,6 +22,34 @@ Mismo funcionamiento de robot_rpc_v0_2, organizado según el acuerdo del grupo. 
 
 Los nombres de módulos Python se conservan porque la propuesta del grupo permite ajustarlos y ya separan interfaz, comunicación y modelos. No hay copias duplicadas con nombres alternativos.
 
+## Ejecutar en Windows (PowerShell)
+
+Requiere MinGW-w64 de MSYS2 UCRT64 (g++, ar y mingw32-make en PATH), y Python 3.10 o posterior. No requiere CMake ni paquetes pip.
+
+Desde la raiz:
+
+```powershell
+mingw32-make -C server
+.\server\build\robot_server.exe
+```
+
+En otra terminal, desde la raiz:
+
+```powershell
+python client/main.py ping
+python client/main.py eco "Hola desde Windows"
+```
+
+Sin argumentos, `python client/main.py` abre el menu. Cerrar el servidor con Ctrl+C.
+
+Pruebas automaticas (inician y terminan su propio servidor):
+
+```powershell
+mingw32-make -C server test
+```
+
+Ver `docs/COMPATIBILIDAD_WINDOWS.md` para alcance y cambios de portabilidad.
+
 ## Ejecutar en Linux
 
 Descomprimir y abrir `TP_integrador_real` en VS Code. Detener con Ctrl+C cualquier servidor anterior que use el puerto 8080.

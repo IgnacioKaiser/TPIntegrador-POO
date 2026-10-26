@@ -1,7 +1,8 @@
-"""Pruebas extremo a extremo contra el ejecutable C++ real (Linux)."""
+"""Pruebas extremo a extremo contra el ejecutable C++ real (Windows y Linux)."""
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import os
 import socket
 import subprocess
 import sys
@@ -16,6 +17,8 @@ from robot_client.cliente import ClienteXmlRpc, ErrorComunicacion, ServiciosPrue
 from robot_client.mensaje import MensajeRPC
 
 ROOT = Path(__file__).resolve().parents[2]
+SERVIDOR = ROOT / "server" / "build" / (
+    "robot_server.exe" if os.name == "nt" else "robot_server")
 
 
 class IntegracionTests(unittest.TestCase):
@@ -29,7 +32,7 @@ class IntegracionTests(unittest.TestCase):
         cls.url = f"http://127.0.0.1:{cls.puerto}/RPC2"
         cls.salida = tempfile.TemporaryFile(mode="w+")
         cls.proceso = subprocess.Popen(
-            [str(ROOT / "server/build/robot_server"), "--port", str(cls.puerto)],
+            [str(SERVIDOR), "--port", str(cls.puerto)],
             stdout=cls.salida, stderr=subprocess.STDOUT,
         )
         cls.addClassCleanup(cls.cerrar)
@@ -58,7 +61,7 @@ class IntegracionTests(unittest.TestCase):
                 cls.proceso.kill()
                 cls.proceso.wait()
                 cls.salida.close()
-                raise AssertionError("El servidor no cerro ante SIGTERM.")
+                raise AssertionError("El servidor no termino al solicitar su cierre.")
         cls.salida.close()
 
     def test_ping(self):
@@ -130,7 +133,7 @@ class IntegracionTests(unittest.TestCase):
 
     def test_puerto_ocupado(self):
         resultado = subprocess.run(
-            [str(ROOT / "server/build/robot_server"), "--port", str(self.puerto)],
+            [str(SERVIDOR), "--port", str(self.puerto)],
             capture_output=True, text=True, timeout=3,
         )
         self.assertNotEqual(resultado.returncode, 0)

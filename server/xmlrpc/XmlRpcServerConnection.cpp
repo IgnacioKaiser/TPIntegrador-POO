@@ -31,10 +31,10 @@ const std::string XmlRpcServerConnection::FAULTSTRING = "faultString";
 
 
 // The server delegates handling client requests to a serverConnection object.
-XmlRpcServerConnection::XmlRpcServerConnection(int fd, XmlRpcServer* server, bool deleteOnClose /*= false*/) :
+XmlRpcServerConnection::XmlRpcServerConnection(SocketHandle fd, XmlRpcServer* server, bool deleteOnClose /*= false*/) :
   XmlRpcSource(fd, deleteOnClose)
 {
-  XmlRpcUtil::log(2,"XmlRpcServerConnection: new socket %d.", fd);
+  XmlRpcUtil::log(2,"XmlRpcServerConnection: new socket %llu.", static_cast<unsigned long long>(fd));
   _server = server;
   _connectionState = READ_HEADER;
   _keepAlive = true;
@@ -349,7 +349,7 @@ XmlRpcServerConnection::generateHeader(std::string const& body)
     "Content-length: ";
 
   char buffLen[40];
-  sprintf(buffLen,"%lu\r\n\r\n", body.size());
+  sprintf(buffLen, "%zu\r\n\r\n", body.size());
 
   return header + buffLen;
 }

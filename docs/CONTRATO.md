@@ -46,7 +46,7 @@ Los arreglos y estructuras pueden contener otros valores de los tipos permitidos
 
 No se utilizarán `nil`, `dateTime.iso8601` ni `base64` en los mensajes de aplicación. Los valores `double` deben ser finitos (no `NaN` ni infinito).
 
-**En C++**, la clase `XmlRpc::XmlRpcValue` de la biblioteca XML-RPC existente representará los valores y las estructuras del mensaje. **En Python**, se utilizarán los tipos nativos compatibles con XML-RPC.
+**En C++**, `ValorRPC` y `EstructuraRPC` representan los valores y estructuras sin depender del transporte. El adaptador los convierte a `XmlRpc::XmlRpcValue` para XML-RPC. **En Python**, se utilizan los tipos nativos compatibles con XML-RPC.
 
 ## 5. Reglas de identificación y nombres
 
