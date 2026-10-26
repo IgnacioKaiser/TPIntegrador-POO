@@ -6,7 +6,7 @@ Mismo funcionamiento de robot_rpc_v0_2, organizado según el acuerdo del grupo. 
 
 - `server/xmlrpc/`: biblioteca XmlRpc++ original, licencia y ejemplos, separados del código propio.
 - `server/include/robotrpc/` y `server/src/`: clases de mensajes, servicio y servidor.
-- `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, sin modificar. Se compilan pero todavía no se utilizan para registrar eventos.
+- `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, con adaptacion de fecha/hora para Windows. Se compilan pero todavía no se utilizan para registrar eventos.
 - `server/examples/tp2_logger/`: main y datos de ejemplo originales del logger.
 - `server/tests/`: pruebas C++ y de integración cliente-servidor.
 - `server/Makefile`: compilación del servidor, bibliotecas y pruebas.
@@ -54,7 +54,7 @@ Ver `docs/COMPATIBILIDAD_WINDOWS.md` para alcance y cambios de portabilidad.
 
 Descomprimir y abrir `TP_integrador_real` en VS Code. Detener con Ctrl+C cualquier servidor anterior que use el puerto 8080.
 
-Se requieren build-essential y Python 3.10 o posterior. Si ya están instalados, no hay que instalar nada más. No se utiliza libxmlrpc-c++8-dev ni se requieren paquetes pip.
+Se requieren build-essential, Python 3.10 o posterior, libsqlite3-dev y libsodium-dev. No se utiliza libxmlrpc-c++8-dev ni se requieren paquetes pip.
 
 Terminal 1, desde la raíz del proyecto:
 
@@ -92,6 +92,10 @@ También se puede ejecutar `make test` estando dentro de server. `make -C server
 
 El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, el servicio procesa ping/eco y devuelve la respuesta con el mismo ID. El dominio no depende de XmlRpc++. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. No hay todavía autenticación, SQLite, puerto serie ni ejecución de G-Code. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. El servidor RPC aun no integra autenticacion, puerto serie ni ejecucion de G-Code. SQLite se utiliza por ahora en la herramienta local de US-04. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
 
 El firmware se conserva como recurso y no se compila con el Makefile del servidor. Los warnings de parámetros no utilizados provienen del código original de XmlRpc++.
+
+## US-04: usuarios persistentes
+
+Se agrega el modulo de usuarios SQLite y la herramienta local usuarios_admin. Requieren SQLite y libsodium para compilar. Ver [US-04](docs/backlog/US-04.md) para instalacion, comandos, decisiones y pruebas. La autenticacion de peticiones RPC aun no esta integrada; corresponde al siguiente hito US-03.
