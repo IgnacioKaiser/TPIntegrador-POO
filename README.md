@@ -92,10 +92,14 @@ También se puede ejecutar `make test` estando dentro de server. `make -C server
 
 El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, el servicio procesa ping/eco y devuelve la respuesta con el mismo ID. El dominio no depende de XmlRpc++. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. El servidor RPC aun no integra autenticacion, puerto serie ni ejecucion de G-Code. SQLite se utiliza por ahora en la herramienta local de US-04. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. El servidor RPC integra autenticacion mediante SQLite en US-03. Aun no hay puerto serie ni ejecucion de G-Code. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
 
 El firmware se conserva como recurso y no se compila con el Makefile del servidor. Los warnings de parámetros no utilizados provienen del código original de XmlRpc++.
 
 ## US-04: usuarios persistentes
 
-Se agrega el modulo de usuarios SQLite y la herramienta local usuarios_admin. Requieren SQLite y libsodium para compilar. Ver [US-04](docs/backlog/US-04.md) para instalacion, comandos, decisiones y pruebas. La autenticacion de peticiones RPC aun no esta integrada; corresponde al siguiente hito US-03.
+Se agrega el modulo de usuarios SQLite y la herramienta local usuarios_admin. Requieren SQLite y libsodium para compilar. Ver [US-04](docs/backlog/US-04.md) para instalacion, comandos, decisiones y pruebas. La autenticacion de peticiones se integra en US-03; ver su documentacion.
+
+## US-03: autenticacion de solicitudes
+
+El servidor utiliza la base preparada en US-04 y exige un administrador inicial. Se conserva esa base: no reinicializarla. Ejecutar desde la raiz `server/build/robot_server` (Windows: `.\server\build\robot_server.exe`). Se puede indicar `--db ruta` para elegir otra base. Cada ejecucion del cliente pide usuario y clave; ping y eco ya requieren autenticacion. Ver [US-03](docs/backlog/US-03.md) para cambios, explicaciones y pruebas.

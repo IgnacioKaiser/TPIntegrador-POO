@@ -40,7 +40,7 @@ SERVER := build/robot_server$(EXE)
 DOMAIN_TEST := build/test_domain$(EXE)
 DEPS := $(RPC_OBJECTS:.o=.d) $(LOG_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) build/tests/test_domain.d
 
-.PHONY: all libraries examples test test-unit test-usuarios usuarios clean
+.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion usuarios clean
 all: $(SERVER) libraries $(USER_TOOL)
 libraries: $(RPC_LIB) $(LOG_LIB)
 
@@ -48,8 +48,8 @@ $(RPC_LIB): $(RPC_OBJECTS)
 	$(AR) rcs $@ $^
 $(LOG_LIB): $(LOG_OBJECTS)
 	$(AR) rcs $@ $^
-$(SERVER): $(APP_OBJECTS) $(RPC_LIB)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
+$(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS) $(USER_LIBS)
 build/%.o: %.cpp
 	$(crear_directorio)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
@@ -64,7 +64,7 @@ build/examples/%$(EXE): xmlrpc/examples/%.cpp $(RPC_LIB)
 test-unit: $(DOMAIN_TEST)
 	$(ejecutar_prueba)
 	$(prueba_python) -m unittest discover -s ../client/tests -v
-test: all test-unit test-usuarios
+test: all test-unit test-usuarios test-autenticacion
 	$(prueba_python) -m unittest discover -s tests -p "test_integration.py" -v
 usuarios: $(USER_TOOL)
 $(USER_TOOL): build/tools/usuarios_admin.o $(USER_OBJECTS)
@@ -73,6 +73,10 @@ $(USER_TEST): build/tests/test_usuarios.o $(USER_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(USER_LIBS)
 test-usuarios: $(USER_TOOL) $(USER_TEST)
 	$(PYTHON) tests/ejecutar_usuarios.py
+build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(USER_LIBS)
+test-autenticacion: build/test_autenticacion$(EXE)
+	$(PYTHON) tests/ejecutar_autenticacion.py
 clean:
 	$(limpiar)
--include $(DEPS) $(USER_OBJECTS:.o=.d) build/tools/usuarios_admin.d build/tests/test_usuarios.d
+-include build/src/usuarios/autenticador.d build/src/usuarios/servicio_protegido.d build/tests/test_autenticacion.d $(DEPS) $(USER_OBJECTS:.o=.d) build/tools/usuarios_admin.d build/tests/test_usuarios.d

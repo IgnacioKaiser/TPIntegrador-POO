@@ -1,5 +1,5 @@
 #pragma once
-#include "robotrpc/servicio.hpp"
+#include "robotrpc/servicio_protegido.hpp"
 #include <stdexcept>
 
 namespace robotrpc {
@@ -11,12 +11,16 @@ public:
 
 class ServidorXmlRpc {
 public:
-    explicit ServidorXmlRpc(unsigned short puerto);
+    explicit ServidorXmlRpc(unsigned short puerto,
+                            const std::string& ruta = "data/db/usuarios.sqlite");
     void ejecutar();
 
 private:
     unsigned short puerto_;
+    RepositorioUsuarios usuarios_;
+    Autenticador autenticador_;
     ServicioPrueba servicio_;
+    ServicioProtegido protegido_;
 };
 
 } // namespace robotrpc

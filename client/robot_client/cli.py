@@ -1,6 +1,7 @@
 """Interfaz de consola del cliente, separada del transporte y del modelo."""
 
 import argparse
+from getpass import getpass
 import json
 import sys
 
@@ -57,12 +58,18 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        servicios = ServiciosPrueba(ClienteXmlRpc(args.url, args.timeout))
+        usuario = input("Usuario: ").strip()
+        clave = getpass("Clave: ")
+        servicios = ServiciosPrueba(ClienteXmlRpc(args.url, args.timeout), usuario, clave)
         cli = CliCliente(servicios)
         if args.comando == "ping":
-            cli.mostrar(servicios.ping())
+            respuesta = servicios.ping()
+            cli.mostrar(respuesta)
+            return 0 if respuesta.codigo == "OK" else 1
         elif args.comando == "eco":
-            cli.mostrar(servicios.eco(args.texto))
+            respuesta = servicios.eco(args.texto)
+            cli.mostrar(respuesta)
+            return 0 if respuesta.codigo == "OK" else 1
         else:
             cli.ejecutar()
         return 0

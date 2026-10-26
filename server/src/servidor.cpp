@@ -82,7 +82,7 @@ class MetodoIntercambiar final
 public:
     MetodoIntercambiar(
         XmlRpc::XmlRpcServer& servidor,
-        const ServicioPrueba& servicio
+        const ServicioProtegido& servicio
     )
         : XmlRpcServerMethod(
             "robot.intercambiar", &servidor),
@@ -140,13 +140,19 @@ public:
     }
 
 private:
-    const ServicioPrueba& servicio_;
+    const ServicioProtegido& servicio_;
 };
 
 } // namespace
 
-ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto)
-    : puerto_(puerto) {
+ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto, const std::string& ruta)
+    : puerto_(puerto), usuarios_(ruta), autenticador_(usuarios_),
+      protegido_(autenticador_, servicio_) {
+    int administradores = 0;
+    for (const auto& usuario : usuarios_.listar())
+        if (usuario.rol == Rol::ADMINISTRADOR && usuario.habilitado) ++administradores;
+    if (administradores != 1)
+        throw ErrorServidor("Inicialice primero el administrador con usuarios_admin, usando la misma base.");
 
     if (puerto == 0)
         throw ErrorServidor(
@@ -157,7 +163,7 @@ void ServidorXmlRpc::ejecutar() {
 
     ServidorLocal servidor;
 
-    MetodoIntercambiar metodo(servidor, servicio_);
+    MetodoIntercambiar metodo(servidor, protegido_);
 
     servidor.enableIntrospection(true);
     XmlRpc::setVerbosity(0);

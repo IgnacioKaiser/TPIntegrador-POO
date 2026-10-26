@@ -82,13 +82,14 @@ class ClienteXmlRpc:
 class ServiciosPrueba:
     """Operaciones de prueba, independientes del menu de consola."""
 
-    def __init__(self, cliente: ClienteXmlRpc):
+    def __init__(self, cliente: ClienteXmlRpc, usuario: str, clave: str):
         self.cliente = cliente
+        self._credenciales = {"usuario": usuario, "clave": clave}
 
     def ping(self) -> MensajeRPC:
-        return self.cliente.enviar(MensajeRPC.solicitud("ping"))
+        return self.cliente.enviar(MensajeRPC.solicitud("ping", {"credenciales": self._credenciales}))
 
     def eco(self, texto: str) -> MensajeRPC:
         return self.cliente.enviar(
-            MensajeRPC.solicitud("eco", {"texto": texto})
+            MensajeRPC.solicitud("eco", {"texto": texto, "credenciales": self._credenciales})
         )

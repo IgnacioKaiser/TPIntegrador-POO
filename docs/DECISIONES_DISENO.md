@@ -2,7 +2,7 @@
 
 Fecha: 26 de octubre de 2026.
 Base revisada: master, commit f4be8c1.
-Estado: US-04 implementada en el entregable del hito 1, pendiente de verificacion nativa del equipo en Windows; US-03 pendiente.
+Estado: US-04 verificada por el equipo en Windows. US-03 implementada en el entregable del hito 2 y pendiente de verificacion nativa del equipo.
 
 ## Objetivo y orden
 
@@ -79,3 +79,11 @@ Verificar compilacion y pruebas en Windows y Linux antes de integrar a master. A
 Se incorpora una consola local separada (usuarios_admin) para inicializar, agregar operadores y listar. Agregar/listar requieren un administrador autenticado. Se usa struct Usuario para la vista simple de datos, sin secretos, y enum Rol. RepositorioUsuarios encapsula SQLite y ofrece verificarClave para esta herramienta y la integracion posterior. El Autenticador de peticiones se agrega en US-03, no en este hito.
 
 El nombre de usuario se limita a 1-64 caracteres ASCII alfanumericos, guion y guion bajo; distingue mayusculas. La clave se limita a 8-256 bytes UTF-8. Se usa --db para configurar la ruta; el valor por defecto se resuelve desde el directorio de ejecucion, documentado como raiz del proyecto. Ver docs/backlog/US-04.md.
+
+## Actualizacion US-03: puerta de acceso comun
+
+Autenticador comprueba credenciales y estado consultando el repositorio en cada peticion. ServicioProtegido lo usa antes de invocar las operaciones. Las credenciales se retiran de la copia entregada al servicio para que no sean parametros del robot ni terminen en registros de trabajo. ping y eco requieren autenticacion. Los metodos system.* de la biblioteca conservan metadatos de XML-RPC, sin acceso directo al servicio de aplicacion.
+
+Se conserva ServicioPrueba como objeto separado y se hace virtual su operacion atender para sustituirlo en pruebas por un servicio espia. Esto permite comprobar que no se invoca con credenciales rechazadas, sin inventar movimientos del robot ni agregar contadores al servicio de produccion.
+
+La consola Python usa getpass y conserva las credenciales en memoria; no se agregan argumentos con contrasenas ni archivos de sesion. Cada peticion vuelve a enviarlas. La base existente no cambia de esquema. El servidor exige un administrador habilitado al arrancar. La habilitacion remota sigue fuera de este hito (US-05); las pruebas cambian el estado directamente sobre bases temporales.

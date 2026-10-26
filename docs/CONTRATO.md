@@ -176,7 +176,7 @@ Las operaciones de prueba existentes, como `ping` y `eco`, pueden adaptarse a es
 ## 12. Seguridad y registro
 
 - Se validan los tipos, rangos y permisos en el servidor, aunque el cliente haya realizado comprobaciones previas.
-- Si se incorporan credenciales o tokens, deberán definirse como parámetros con nombre y tipo; no deberán registrarse sus valores en logs.
+- Las credenciales se incluyen como parametros.credenciales, estructura con usuario y clave de tipo string. Se validan en cada peticion de aplicacion. No deben registrarse en logs ni devolverse en respuestas.
 - Los errores no deben exponer contraseñas ni información interna innecesaria.
 - El uso inicial de HTTP/XML-RPC en un entorno de pruebas local no debe interpretarse como protección suficiente para una red no confiable.
 
@@ -185,3 +185,9 @@ Las operaciones de prueba existentes, como `ping` y `eco`, pueden adaptarse a es
 El cliente y el servidor deben respetar los mismos nombres, tipos y significados. Si se modifica la estructura general o la definición de una operación, se actualizarán este documento y las implementaciones y pruebas correspondientes de ambos lados.
 
 La biblioteca XML-RPC se reutilizará para transportar y representar los valores; no se implementará manualmente un parser XML adicional para estos mensajes.
+
+## Autenticacion incorporada en US-03
+
+Todas las operaciones de aplicacion actuales (ping y eco) requieren parametros.credenciales con exactamente usuario y clave, ambos string. ping no recibe otros parametros; eco recibe ademas texto. La omision de credenciales devuelve NO_AUTENTICADO, su formato incorrecto VALIDACION, una clave incorrecta o usuario inexistente NO_AUTENTICADO y una cuenta deshabilitada con clave correcta PERMISO_DENEGADO. No se agregan sesiones. Los system.* de XmlRpc++ son metadatos y no ofrecen acceso directo a los servicios de aplicacion.
+
+Ver docs/backlog/US-03.md para decisiones, recorrido y pruebas.
