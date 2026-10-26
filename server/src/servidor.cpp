@@ -189,3 +189,5 @@ void ServidorXmlRpc::ejecutar() {
 
     std::cout << "Servidor cerrado." << std::endl;
 }
+
+} // namespace robotrpc
