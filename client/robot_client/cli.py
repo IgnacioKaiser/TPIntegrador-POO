@@ -1,5 +1,7 @@
-"""Presentación por consola, separada del mensaje y los servicios."""
+"""Interfaz de consola del cliente, separada del transporte y del modelo."""
+
 import argparse
+import json
 import sys
 
 from .cliente import ClienteXmlRpc, ErrorComunicacion, ServiciosPrueba
@@ -12,13 +14,23 @@ class CliCliente:
 
     @staticmethod
     def mostrar(respuesta):
-        print(f"[{respuesta.codigo}] {respuesta.contenido}")
+        # ping devuelve resultado.mensaje; eco devuelve resultado.texto.
+        datos = respuesta.resultado
+        if "texto" in datos and isinstance(datos["texto"], str):
+            detalle = datos["texto"]
+        elif "mensaje" in datos and isinstance(datos["mensaje"], str):
+            detalle = datos["mensaje"]
+        else:
+            # Tambien sirve para futuros resultados estructurados.
+            detalle = json.dumps(datos, ensure_ascii=False)
+
+        print(f"[{respuesta.codigo}] {detalle}")
         print(f"ID: {respuesta.id}")
 
     def ejecutar(self):
         while True:
-            print("\n1. Comprobar conexión (ping)\n2. Enviar texto (eco)\n0. Salir")
-            opcion = input("Opción: ").strip()
+            print("\n1. Comprobar conexion (ping)\n2. Enviar texto (eco)\n0. Salir")
+            opcion = input("Opcion: ").strip()
             if opcion == "0":
                 return
             try:
@@ -27,13 +39,15 @@ class CliCliente:
                 elif opcion == "2":
                     self.mostrar(self.servicios.eco(input("Texto: ")))
                 else:
-                    print("Opción inválida.")
+                    print("Opcion invalida.")
             except (ErrorComunicacion, MensajeInvalido) as error:
                 print(f"Error: {error}", file=sys.stderr)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Cliente Python del TP: comunicación XML-RPC v0.2")
+    parser = argparse.ArgumentParser(
+        description="Cliente Python del TP: comunicacion XML-RPC"
+    )
     parser.add_argument("--url", default="http://127.0.0.1:8080/RPC2")
     parser.add_argument("--timeout", type=float, default=3.0)
     comandos = parser.add_subparsers(dest="comando")
@@ -41,6 +55,7 @@ def main(argv=None):
     eco = comandos.add_parser("eco", help="Enviar y recuperar texto")
     eco.add_argument("texto")
     args = parser.parse_args(argv)
+
     try:
         servicios = ServiciosPrueba(ClienteXmlRpc(args.url, args.timeout))
         cli = CliCliente(servicios)

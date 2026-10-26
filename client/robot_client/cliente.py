@@ -1,4 +1,5 @@
-"""Transporte XML-RPC y servicios; este módulo no imprime ni pide datos."""
+"""Transporte XML-RPC y servicios de prueba, sin interfaz de consola."""
+
 import math
 from http.client import HTTPException
 from urllib.parse import urlsplit
@@ -9,7 +10,7 @@ from .mensaje import MensajeInvalido, MensajeRPC
 
 
 class ErrorComunicacion(RuntimeError):
-    pass
+    """Error de transporte o de respuesta remota invalida."""
 
 
 class TransporteConTimeout(Transport):
@@ -23,37 +24,55 @@ class TransporteConTimeout(Transport):
         return conexion
 
     def request(self, host, handler, request_body, verbose=False):
-        # Una sola tentativa: no repetir automáticamente futuras acciones del robot.
+        # No reintentar automaticamente: en el futuro puede haber movimientos.
         return self.single_request(host, handler, request_body, verbose)
 
 
 class ClienteXmlRpc:
     def __init__(self, url="http://127.0.0.1:8080/RPC2", timeout=3.0):
         partes = urlsplit(url)
-        if (partes.scheme != "http" or not partes.hostname or partes.username is not None
-                or partes.password is not None or partes.query or partes.fragment):
-            raise ValueError("Usá una URL HTTP sin credenciales, por ejemplo http://127.0.0.1:8080/RPC2")
+        if (partes.scheme != "http" or not partes.hostname
+                or partes.username is not None or partes.password is not None
+                or partes.query or partes.fragment):
+            raise ValueError(
+                "Usa una URL HTTP sin credenciales, por ejemplo "
+                "http://127.0.0.1:8080/RPC2"
+            )
         try:
             puerto = partes.port
         except ValueError as error:
-            raise ValueError("Puerto inválido en la URL.") from error
-        if puerto == 0 or not math.isfinite(timeout) or timeout <= 0:
-            raise ValueError("Puerto y timeout deben ser válidos; timeout debe ser positivo.")
+            raise ValueError("Puerto invalido en la URL.") from error
+        if (puerto == 0 or type(timeout) not in (int, float)
+                or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError("Puerto y timeout deben ser validos; timeout positivo.")
+
         self.url = url
         self.timeout = timeout
 
     def enviar(self, solicitud: MensajeRPC) -> MensajeRPC:
-        if solicitud.tipo != "solicitud":
-            raise MensajeInvalido("Solo se pueden enviar solicitudes.")
+        if not isinstance(solicitud, MensajeRPC) or solicitud.tipo != "solicitud":
+            raise MensajeInvalido("Solo se pueden enviar objetos MensajeRPC de solicitud.")
+
         try:
-            with ServerProxy(self.url, transport=TransporteConTimeout(self.timeout),
-                             allow_none=False, encoding="utf-8") as remoto:
+            with ServerProxy(
+                self.url,
+                transport=TransporteConTimeout(self.timeout),
+                allow_none=False,
+                encoding="utf-8",
+            ) as remoto:
                 campos = remoto.robot.intercambiar(solicitud.serializar())
             respuesta = MensajeRPC.deserializar(campos)
         except Fault as error:
-            raise ErrorComunicacion(f"El servidor rechazó el mensaje ({error.faultCode}): {error.faultString}") from error
-        except (ProtocolError, ResponseError, OSError, HTTPException, ExpatError, MensajeInvalido) as error:
-            raise ErrorComunicacion(f"No se obtuvo una respuesta válida desde {self.url}: {error}") from error
+            raise ErrorComunicacion(
+                f"El servidor rechazo el mensaje ({error.faultCode}): "
+                f"{error.faultString}"
+            ) from error
+        except (ProtocolError, ResponseError, OSError, HTTPException,
+                ExpatError, MensajeInvalido, TypeError, ValueError) as error:
+            raise ErrorComunicacion(
+                f"No se obtuvo una respuesta valida desde {self.url}: {error}"
+            ) from error
+
         if (respuesta.tipo != "respuesta" or respuesta.id != solicitud.id
                 or respuesta.operacion != solicitud.operacion):
             raise ErrorComunicacion("La respuesta no corresponde a la solicitud enviada.")
@@ -61,6 +80,8 @@ class ClienteXmlRpc:
 
 
 class ServiciosPrueba:
+    """Operaciones de prueba, independientes del menu de consola."""
+
     def __init__(self, cliente: ClienteXmlRpc):
         self.cliente = cliente
 
@@ -68,4 +89,6 @@ class ServiciosPrueba:
         return self.cliente.enviar(MensajeRPC.solicitud("ping"))
 
     def eco(self, texto: str) -> MensajeRPC:
-        return self.cliente.enviar(MensajeRPC.solicitud("eco", texto))
+        return self.cliente.enviar(
+            MensajeRPC.solicitud("eco", {"texto": texto})
+        )
