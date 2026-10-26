@@ -66,7 +66,7 @@ US-04: persistencia tras cerrar y reabrir; usuario duplicado rechazado; segundo 
 
 US-03: credenciales correctas, incorrectas, ausentes o con tipos invalidos; usuario inexistente; cuenta deshabilitada; verificacion en dos peticiones sucesivas, incluyendo cambio de estado entre ellas; una solicitud rechazada no invoca el servicio ni produce efectos. Las pruebas de solo codigo de error no bastan para demostrar ausencia de ejecucion.
 
-Verificar compilacion y pruebas en Windows y Linux antes de integrar a master. Actualizar este documento ante cualquier decision posterior, indicando razon y estado de verificacion.
+Estado: US-03 y US-04 implementadas y verificadas en Windows y Linux.
 
 ## Referencias
 
