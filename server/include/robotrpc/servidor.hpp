@@ -14,7 +14,6 @@ public:
     explicit ServidorXmlRpc(unsigned short puerto,
                             const std::string& ruta = "data/db/usuarios.sqlite");
     void ejecutar();
-
 private:
     unsigned short puerto_;
     RepositorioUsuarios usuarios_;

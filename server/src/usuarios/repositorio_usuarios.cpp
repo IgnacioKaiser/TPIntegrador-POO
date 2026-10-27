@@ -21,6 +21,10 @@ public:
                               static_cast<int>(valor.size()), SQLITE_TRANSIENT) != SQLITE_OK)
             throw ErrorUsuarios("No se pudo asignar el parametro de la consulta.");
     }
+    void entero(int posicion, int valor) {
+        if (sqlite3_bind_int(stmt_, posicion, valor) != SQLITE_OK)
+            throw ErrorUsuarios("No se pudo asignar el parametro de la consulta.");
+    }
     int paso() {
         const int resultado = sqlite3_step(stmt_);
         if (resultado == SQLITE_ROW || resultado == SQLITE_DONE) return resultado;
@@ -48,21 +52,18 @@ void validarNombre(const std::string& nombre) {
               (c >= '0' && c <= '9') || c == '_' || c == '-'))
             throw ErrorUsuarios("El usuario solo admite letras ASCII, numeros, _ y -.");
 }
-}
+} // namespace
 
-RepositorioUsuarios::RepositorioUsuarios(const std::string& ruta) 
-{
+RepositorioUsuarios::RepositorioUsuarios(const std::string& ruta) {
     if (ruta.empty()) throw ErrorUsuarios("La ruta de la base no puede estar vacia.");
     if (sodium_init() < 0) throw ErrorUsuarios("No se pudo inicializar libsodium.");
     const auto carpeta = std::filesystem::path(ruta).parent_path();
     if (!carpeta.empty()) std::filesystem::create_directories(carpeta);
-    if (sqlite3_open(ruta.c_str(), &db_) != SQLITE_OK) 
-    {
+    if (sqlite3_open(ruta.c_str(), &db_) != SQLITE_OK) {
         sqlite3_close(db_);
         db_ = nullptr;
         throw ErrorUsuarios("No se pudo abrir la base de usuarios.");
     }
-    
     try {
         if (sqlite3_busy_timeout(db_, 3000) != SQLITE_OK)
             throw ErrorUsuarios("No se pudo configurar la base de usuarios.");
@@ -81,7 +82,6 @@ RepositorioUsuarios::RepositorioUsuarios(const std::string& ruta)
     }
 }
 RepositorioUsuarios::~RepositorioUsuarios() { sqlite3_close(db_); }
-
 void RepositorioUsuarios::ejecutar(const char* sql) const {
     if (sqlite3_exec(db_, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
         throw ErrorUsuarios("No se pudo ejecutar la operacion de base de datos.");
@@ -89,13 +89,12 @@ void RepositorioUsuarios::ejecutar(const char* sql) const {
 void RepositorioUsuarios::insertar(const std::string& nombre,
                                   const std::string& clave, Rol rol) {
     validarNombre(nombre);
-    // Limites del proyecto, medidos en bytes UTF-8.
     if (clave.size() < 8 || clave.size() > 256)
         throw ErrorUsuarios("La clave debe tener entre 8 y 256 bytes.");
     char hash[crypto_pwhash_STRBYTES];
     if (crypto_pwhash_str(hash, clave.data(), clave.size(),
-                         crypto_pwhash_OPSLIMIT_INTERACTIVE,
-                         crypto_pwhash_MEMLIMIT_INTERACTIVE) != 0)
+                          crypto_pwhash_OPSLIMIT_INTERACTIVE,
+                          crypto_pwhash_MEMLIMIT_INTERACTIVE) != 0)
         throw ErrorUsuarios("No se pudo generar la credencial.");
     Sentencia consulta(db_, "INSERT INTO usuarios(nombre,clave_hash,rol) VALUES(?,?,?);");
     consulta.texto(1, nombre);
@@ -105,7 +104,6 @@ void RepositorioUsuarios::insertar(const std::string& nombre,
 }
 void RepositorioUsuarios::inicializarAdministrador(const std::string& nombre,
                                                    const std::string& clave) {
-    // El bloqueo evita que dos inicializaciones simultaneas creen administradores.
     ejecutar("BEGIN IMMEDIATE;");
     try {
         {
@@ -149,4 +147,17 @@ bool RepositorioUsuarios::verificarClave(const std::string& nombre,
     const auto hash = texto(consulta.get(), 0);
     return crypto_pwhash_str_verify(hash.c_str(), clave.data(), clave.size()) == 0;
 }
+
+bool RepositorioUsuarios::cambiarHabilitacionOperador(
+    const std::string& nombre, bool habilitado) {
+    validarNombre(nombre);
+    // El WHERE impide modificar ADMINISTRADOR, incluso si se llama directamente
+    // al repositorio sin pasar por ServicioProtegido.
+    Sentencia consulta(db_,
+        "UPDATE usuarios SET habilitado=? WHERE nombre=? AND rol='OPERADOR';");
+    consulta.entero(1, habilitado ? 1 : 0);
+    consulta.texto(2, nombre);
+    consulta.paso();
+    return sqlite3_changes(db_) == 1;
 }
+} // namespace robotrpc
