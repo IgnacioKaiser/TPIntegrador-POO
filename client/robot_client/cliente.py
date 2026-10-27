@@ -99,3 +99,33 @@ class ServiciosPrueba:
 
     def deshabilitar_operador(self, usuario: str) -> MensajeRPC:
         return self._enviar("usuario.deshabilitar", {"usuario": usuario})
+
+    def seleccionar_modo_trabajo(self, modo: str) -> MensajeRPC:
+        return self._enviar("seleccionar_modo_trabajo", {"modo": modo})
+
+    def seleccionar_modo_coordenadas(self, modo: str) -> MensajeRPC:
+        return self._enviar("seleccionar_modo_coordenadas", {"modo": modo})
+
+    def estado_robot(self) -> MensajeRPC:
+        return self._enviar("estado")
+
+    def ir_a_origen(self) -> MensajeRPC:
+        return self._enviar("ir_a_origen")
+
+    def mover(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        velocidad: float | None = None,
+    ) -> MensajeRPC:
+        parametros = {"x": x, "y": y, "z": z}
+        if velocidad is not None:
+            parametros["velocidad"] = velocidad
+        return self._enviar("mover", parametros)
+
+    def activar_efector(self) -> MensajeRPC:
+        return self._enviar("activar_efector")
+
+    def desactivar_efector(self) -> MensajeRPC:
+        return self._enviar("desactivar_efector")

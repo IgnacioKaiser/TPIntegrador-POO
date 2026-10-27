@@ -76,16 +76,17 @@ Representación conceptual, equivalente al `struct` XML-RPC que se envía por la
     "tipo": "solicitud",
     "operacion": "mover",
     "parametros": {
-        "x": 120.5,
-        "y": 80.0,
-        "velocidad": 50
+        "x": 0.0,
+        "y": 170.0,
+        "z": 120.0,
+        "velocidad": 7.5
     },
     "resultado": {},
     "codigo": ""
 }
 ```
 
-**Nota:** `mover` es un ejemplo de formato. Sus parámetros definitivos y sus rangos deberán ajustarse a las unidades, capacidades y requisitos del robot antes de implementar esa operación.
+Las unidades y límites de `mover` se especifican en la sección 10.
 
 ## 7. Respuestas
 
@@ -156,7 +157,8 @@ En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de
 ## 10. Operaciones implementadas
 
 Todas las operaciones rechazan parámetros desconocidos. `ping`, `desconectar`,
-`estado`, los comandos de motores y `ayuda` no aceptan parámetros.
+`estado`, los comandos de motores, origen, efector y `ayuda` no aceptan
+parámetros.
 
 | Operación | Parámetros | Resultado en `OK` | Comportamiento |
 | --- | --- | --- | --- |
@@ -164,35 +166,62 @@ Todas las operaciones rechazan parámetros desconocidos. `ping`, `desconectar`,
 | `eco` | `texto: string` | `texto: string` | Devuelve el texto recibido. |
 | `conectar` | `puerto: string` opcional | `mensaje: string` | Abre el puerto a 115200 baudios, 8N1. Por defecto usa `/dev/ttyACM0` en Linux y `COM3` en Windows. |
 | `desconectar` | Ninguno | `mensaje: string` | Cierra la conexión si está abierta; también es válida si ya estaba desconectado. |
-| `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct` | Devuelve el estado de conexión. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
+| `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct`, `modo_trabajo: string`, `modo_coordenadas: string` | Devuelve el estado de conexión y los modos seleccionados. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
 | `activar_motores` | Ninguno | `respuesta: string` | Envía `M17`. |
 | `desactivar_motores` | Ninguno | `respuesta: string` | Envía `M18`. |
+| `seleccionar_modo_trabajo` | `modo: string` (`manual` o `automatico`) | `modo_trabajo: string`, `mensaje: string` | Guarda el modo de trabajo, separado del modo de coordenadas. Inicia en `manual`. |
+| `seleccionar_modo_coordenadas` | `modo: string` (`absoluto` o `relativo`) | `modo_coordenadas: string`, `respuesta: string`, `mensaje: string` | Guarda el modo y, si está conectado, envía `G90` o `G91`. Si está desconectado, se aplica antes del próximo movimiento. Inicia en `absoluto`. |
+| `ir_a_origen` | Ninguno | `respuesta: string` | En modo manual y conectado, envía `G28`. |
+| `mover` | `x: number`, `y: number`, `z: number`, `velocidad: number` opcional | `respuesta: string`, coordenadas y velocidad solicitadas | En modo manual y conectado, envía `G1`; las coordenadas se interpretan con el modo seleccionado. |
+| `activar_efector` | Ninguno | `respuesta: string`, `mensaje: string` | En modo manual y conectado, envía `M3` para cerrar la pinza. |
+| `desactivar_efector` | Ninguno | `respuesta: string`, `mensaje: string` | En modo manual y conectado, envía `M5` para abrir la pinza. |
 | `ayuda` | Ninguno | `comandos: string` | Informa las operaciones disponibles. |
 
-`posición` informa `disponible`, `mensaje` cuando no está disponible, y
+`posicion` informa `disponible`, `mensaje` cuando no está disponible, y
 coordenadas `x`, `y`, `z`, `e` en milímetros cuando el firmware devuelve el
 formato `CURRENT POSITION: [X:... Y:... Z:... E:...]`. `actividad` contiene
-`motores`, `ventilador` y `modo_coordenadas`; cada dato declara si está
-disponible, y solo incluye `activo` o `valor` cuando se pudo leer.
+`motores`, `ventilador` y `modo_coordenadas`. El modo seleccionado se conoce
+también cuando el robot está desconectado; los demás datos del controlador
+declaran si están disponibles.
 
 `estado` se puede consultar desconectado: responde `conectado: false` y marca
-posición y actividad como no disponibles, en lugar de simular lecturas.
-`activar_motores` y `desactivar_motores` requieren conexión serie; si no
-existe, responden `ESTADO_INVALIDO`. `conectar` responde `ERROR_CONEXION` si
-no puede abrir o configurar el puerto. `OK` en comandos al Arduino se devuelve
-al recibir la línea de confirmación `OK` del firmware; un timeout o una
-respuesta incompleta se informa como `ERROR_INTERNO`.
+posición, motores y ventilador como no disponibles, en lugar de simular
+lecturas. Los modos de trabajo y coordenadas se informan con los valores
+seleccionados. Las operaciones de origen, movimiento y efector requieren modo
+manual y conexión serie; en otro modo o sin conexión responden
+`ESTADO_INVALIDO`. `activar_motores` y `desactivar_motores` requieren
+conexión serie; si no existe, responden `ESTADO_INVALIDO`. `conectar` responde
+`ERROR_CONEXION` si no puede abrir o configurar el puerto. `OK` en comandos al
+Arduino se devuelve al recibir la línea de confirmación `OK` del firmware; un
+timeout o una respuesta incompleta se informa como `ERROR_INTERNO`. Si el
+firmware informa una línea de error, se devuelve `ESTADO_INVALIDO` junto con
+el texto recibido.
+
+`mover` recibe X, Y y Z en milímetros. En modo absoluto representan el punto
+final; en modo relativo representan desplazamientos desde la posición
+consultada al firmware. La velocidad se expresa en mm/s y debe estar entre
+5 y 10; si se omite, se usa 5 mm/s. El mínimo coincide con el menor valor
+explícito que el firmware ejecuta sin reemplazarlo por su propia velocidad
+automática.
+
+La validación de posición replica los límites de `config.h` del firmware:
+altura Z entre -115 y 150 mm, brazos de 120 mm, desplazamiento del efector de
+50 mm y radios articulares derivados de los límites angulares configurados.
+También se comprueba la trayectoria lineal antes de enviarla, para evitar que
+el firmware la interrumpa al pasar por una zona no alcanzable. Una posición o
+velocidad inválida responde `VALIDACION`.
 
 Todas las operaciones requieren credenciales válidas (`parametros.credenciales`
 con `usuario` y `clave` de tipo `string`). El servidor verifica la cuenta y
 su estado en cada solicitud y elimina las credenciales antes de delegar el
 comando. Solo el rol `ADMINISTRADOR` puede conectar o desconectar; los usuarios
-autenticados y habilitados pueden consultar el estado y solicitar operaciones
-de motores.
+autenticados y habilitados pueden consultar el estado, seleccionar modos y
+solicitar operaciones de motores y control manual.
 
-No se expone movimiento G-code desde este conjunto de operaciones. La ayuda
-no anuncia comandos que la interfaz no implemente; tampoco se definen límites
-de coordenadas.
+Las operaciones manuales no se ejecutan mientras el modo de trabajo sea
+`automatico`. Seleccionar el modo automático no inicia una trayectoria; su
+ejecución pertenece a una historia posterior. La ayuda no anuncia comandos que
+la implementación no soporte.
 
 El firmware espera `\r` como terminador de comando y responde con líneas de
 texto terminadas en `\r\n`. El servidor elimina los saltos de línea de la
@@ -227,6 +256,12 @@ La biblioteca XML-RPC se reutilizará para transportar y representar los valores
 
 ## Autenticacion incorporada en US-03
 
-Todas las operaciones de aplicacion actuales (ping y eco) requieren parametros.credenciales con exactamente usuario y clave, ambos string. ping no recibe otros parametros; eco recibe ademas texto. La omision de credenciales devuelve NO_AUTENTICADO, su formato incorrecto VALIDACION, una clave incorrecta o usuario inexistente NO_AUTENTICADO y una cuenta deshabilitada con clave correcta PERMISO_DENEGADO. No se agregan sesiones. Los system.* de XmlRpc++ son metadatos y no ofrecen acceso directo a los servicios de aplicacion.
+Todas las operaciones de aplicacion requieren `parametros.credenciales` con
+exactamente `usuario` y `clave`, ambos `string`. La omision de credenciales
+devuelve `NO_AUTENTICADO`, su formato incorrecto `VALIDACION`, una clave
+incorrecta o usuario inexistente `NO_AUTENTICADO` y una cuenta deshabilitada
+con clave correcta `PERMISO_DENEGADO`. No se agregan sesiones. Los `system.*`
+de XmlRpc++ son metadatos y no ofrecen acceso directo a los servicios de
+aplicacion.
 
 Ver docs/backlog/US-03.md para decisiones, recorrido y pruebas.

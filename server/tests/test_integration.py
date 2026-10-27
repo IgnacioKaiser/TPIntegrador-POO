@@ -99,7 +99,7 @@ class IntegracionTests(unittest.TestCase):
         self.assertEqual(self.servicios.eco("").resultado["texto"], "")
 
     def test_operacion_desconocida_es_error_de_aplicacion(self):
-        respuesta = self.cliente.enviar(solicitud("mover"))
+        respuesta = self.cliente.enviar(solicitud("operacion_desconocida"))
         self.assertEqual(respuesta.codigo, "OPERACION_NO_SOPORTADA")
         self.assertIn("mensaje", respuesta.resultado)
 
@@ -111,6 +111,17 @@ class IntegracionTests(unittest.TestCase):
             ("eco", {"texto": "hola", "extra": True}),
             ("ayuda", {"extra": True}),
             ("activar_motores", {"extra": True}),
+            ("seleccionar_modo_trabajo",
+             {"modo": "manual", "extra": True}),
+            ("seleccionar_modo_coordenadas",
+             {"modo": "absoluto", "extra": True}),
+            ("ir_a_origen", {"extra": True}),
+            ("activar_efector", {"extra": True}),
+            ("mover", {"x": 0.0, "y": 170.0, "z": 120.0,
+                       "velocidad": 11.0}),
+            ("mover", {"x": 0.0, "y": 170.0, "z": 120.0,
+                       "velocidad": 4.0}),
+            ("mover", {"x": "cero", "y": 170.0, "z": 120.0}),
         ):
             with self.subTest(operacion=operacion, parametros=parametros):
                 respuesta = self.cliente.enviar(
@@ -124,6 +135,10 @@ class IntegracionTests(unittest.TestCase):
         for operacion, parametros in (
             ("activar_motores", {}),
             ("desactivar_motores", {}),
+            ("ir_a_origen", {}),
+            ("activar_efector", {}),
+            ("desactivar_efector", {}),
+            ("mover", {"x": 0.0, "y": 170.0, "z": 120.0}),
         ):
             with self.subTest(operacion=operacion):
                 respuesta = self.cliente.enviar(
@@ -138,17 +153,56 @@ class IntegracionTests(unittest.TestCase):
         self.assertFalse(respuesta.resultado["conectado"])
         self.assertFalse(respuesta.resultado["posicion"]["disponible"])
         self.assertIn("mensaje", respuesta.resultado["posicion"])
-        for dato in respuesta.resultado["actividad"].values():
-            self.assertFalse(dato["disponible"])
-            self.assertIn("mensaje", dato)
+        actividad = respuesta.resultado["actividad"]
+        for nombre in ("motores", "ventilador"):
+            self.assertFalse(actividad[nombre]["disponible"])
+            self.assertIn("mensaje", actividad[nombre])
+        self.assertTrue(actividad["modo_coordenadas"]["disponible"])
+        self.assertEqual(actividad["modo_coordenadas"]["valor"], "absoluto")
+        self.assertEqual(respuesta.resultado["modo_trabajo"], "manual")
+        self.assertEqual(respuesta.resultado["modo_coordenadas"], "absoluto")
+
+    def test_modos_independientes_y_operaciones_solo_manuales(self):
+        trabajo = self.servicios.seleccionar_modo_trabajo("automatico")
+        coordenadas = self.servicios.seleccionar_modo_coordenadas("relativo")
+        self.assertEqual(trabajo.codigo, "OK")
+        self.assertEqual(coordenadas.codigo, "OK")
+        self.assertEqual(trabajo.resultado["modo_trabajo"], "automatico")
+        self.assertEqual(coordenadas.resultado["modo_coordenadas"], "relativo")
+
+        estado = self.servicios.estado_robot()
+        self.assertEqual(estado.resultado["modo_trabajo"], "automatico")
+        self.assertEqual(estado.resultado["modo_coordenadas"], "relativo")
+        for operacion in (
+            "ir_a_origen", "mover", "activar_efector", "desactivar_efector",
+        ):
+            parametros = (
+                {"x": 0.0, "y": 170.0, "z": 120.0}
+                if operacion == "mover" else {}
+            )
+            respuesta = self.cliente.enviar(solicitud(operacion, parametros))
+            self.assertEqual(respuesta.codigo, "ESTADO_INVALIDO", operacion)
+
+        manual = self.servicios.seleccionar_modo_trabajo("manual")
+        self.assertEqual(manual.codigo, "OK")
+        desconectado = self.servicios.ir_a_origen()
+        self.assertEqual(desconectado.codigo, "ESTADO_INVALIDO")
+        invalidos = (
+            self.servicios.seleccionar_modo_trabajo("semiautomatico"),
+            self.servicios.seleccionar_modo_coordenadas("local"),
+        )
+        self.assertTrue(all(respuesta.codigo == "VALIDACION"
+                            for respuesta in invalidos))
 
     def test_ayuda_y_desconexion_no_requieren_robot(self):
         ayuda = self.cliente.enviar(solicitud("ayuda"))
         self.assertEqual(ayuda.codigo, "OK")
         self.assertIn("M17", ayuda.resultado["comandos"])
         self.assertIn("M18", ayuda.resultado["comandos"])
-        self.assertNotIn("G0", ayuda.resultado["comandos"])
-        self.assertIn("no hay limites", ayuda.resultado["comandos"].lower())
+        self.assertIn("G28", ayuda.resultado["comandos"])
+        self.assertIn("G1", ayuda.resultado["comandos"])
+        self.assertIn("M3", ayuda.resultado["comandos"])
+        self.assertIn("M5", ayuda.resultado["comandos"])
         desconexion = self.cliente.enviar(
             solicitud("desconectar", credenciales=ADMIN_CREDENCIALES)
         )

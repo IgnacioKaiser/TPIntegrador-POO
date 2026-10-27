@@ -49,6 +49,26 @@ const std::string& texto(
     return *valor;
 }
 
+double numero(
+    const EstructuraRPC& parametros,
+    const std::string& nombre
+) {
+    const auto& dato = parametros.at(nombre).dato();
+    double valor;
+    if (const auto* decimal = std::get_if<double>(&dato)) {
+        valor = *decimal;
+    } else if (const auto* entero = std::get_if<std::int32_t>(&dato)) {
+        valor = static_cast<double>(*entero);
+    } else {
+        throw ParametrosInvalidos(
+            "El parametro " + nombre + " debe ser numerico.");
+    }
+    if (!std::isfinite(valor))
+        throw ParametrosInvalidos(
+            "El parametro " + nombre + " debe ser un numero finito.");
+    return valor;
+}
+
 MensajeRPC respuestaError(
     const MensajeRPC& solicitud,
     const std::string& codigo,
@@ -79,12 +99,19 @@ EstructuraRPC datoBooleano(
         "El firmware no informo el estado de " + nombre + ".");
 }
 
-EstructuraRPC datoModo(const std::string& respuesta) {
-    if (respuesta.find("ABSOLUTE MODE") != std::string::npos)
-        return {{"disponible", true}, {"valor", "absoluto"}};
-    if (respuesta.find("RELATIVE MODE") != std::string::npos)
-        return {{"disponible", true}, {"valor", "relativo"}};
-    return datoNoDisponible("El firmware no informo el modo de coordenadas.");
+std::string nombreModoTrabajo(ModoTrabajo modo) {
+    return modo == ModoTrabajo::MANUAL ? "manual" : "automatico";
+}
+
+std::string nombreModoCoordenadas(ModoCoordenadas modo) {
+    return modo == ModoCoordenadas::ABSOLUTO ? "absoluto" : "relativo";
+}
+
+EstructuraRPC datoModo(ModoCoordenadas modo) {
+    return {
+        {"disponible", true},
+        {"valor", nombreModoCoordenadas(modo)}
+    };
 }
 
 EstructuraRPC posicionRobot(const std::string& respuesta) {
@@ -116,14 +143,13 @@ EstructuraRPC posicionRobot(const std::string& respuesta) {
     }
 }
 
-EstructuraRPC estadoRobotDesconocido() {
+EstructuraRPC estadoRobotDesconocido(ModoCoordenadas modoCoordenadas) {
     return {
         {"motores", datoNoDisponible(
              "El estado de los motores requiere consultar el firmware.")},
         {"ventilador", datoNoDisponible(
              "El estado del ventilador requiere consultar el firmware.")},
-        {"modo_coordenadas", datoNoDisponible(
-             "El modo de coordenadas requiere consultar el firmware.")}
+        {"modo_coordenadas", datoModo(modoCoordenadas)}
     };
 }
 
@@ -161,6 +187,94 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
             validarParametros(parametros, {"texto"});
             return MensajeRPC::respuestaA(
                 solicitud, {{"texto", texto(parametros, "texto")}});
+        }
+
+        if (operacion == "seleccionar_modo_trabajo") {
+            validarParametros(parametros, {"modo"});
+            const std::string valor = texto(parametros, "modo");
+            if (valor == "manual")
+                robot_.seleccionarModoTrabajo(ModoTrabajo::MANUAL);
+            else if (valor == "automatico")
+                robot_.seleccionarModoTrabajo(ModoTrabajo::AUTOMATICO);
+            else
+                throw ParametrosInvalidos(
+                    "El modo de trabajo debe ser manual o automatico.");
+            return MensajeRPC::respuestaA(
+                solicitud,
+                {{"modo_trabajo", valor},
+                 {"mensaje", "Modo de trabajo seleccionado: " + valor + "."}});
+        }
+
+        if (operacion == "seleccionar_modo_coordenadas") {
+            validarParametros(parametros, {"modo"});
+            const std::string valor = texto(parametros, "modo");
+            ModoCoordenadas modo;
+            if (valor == "absoluto")
+                modo = ModoCoordenadas::ABSOLUTO;
+            else if (valor == "relativo")
+                modo = ModoCoordenadas::RELATIVO;
+            else
+                throw ParametrosInvalidos(
+                    "El modo de coordenadas debe ser absoluto o relativo.");
+            const std::string respuesta =
+                robot_.seleccionarModoCoordenadas(modo);
+            return MensajeRPC::respuestaA(
+                solicitud,
+                {{"modo_coordenadas", valor},
+                 {"respuesta", respuesta},
+                 {"mensaje", "Modo de coordenadas seleccionado: " +
+                                 valor + "."}});
+        }
+
+        if (operacion == "ir_a_origen") {
+            validarSinParametros(parametros);
+            return MensajeRPC::respuestaA(
+                solicitud, {{"respuesta", robot_.irAOrigen()}});
+        }
+
+        if (operacion == "mover") {
+            for (const auto& parametro : parametros) {
+                if (parametro.first != "x" && parametro.first != "y" &&
+                    parametro.first != "z" &&
+                    parametro.first != "velocidad")
+                    throw ParametrosInvalidos(
+                        "Parametro no reconocido: " + parametro.first + ".");
+            }
+            for (const auto* eje : {"x", "y", "z"}) {
+                if (parametros.count(eje) == 0)
+                    throw ParametrosInvalidos(
+                        "Falta el parametro requerido: " +
+                        std::string(eje) + ".");
+            }
+            const double x = numero(parametros, "x");
+            const double y = numero(parametros, "y");
+            const double z = numero(parametros, "z");
+            const double velocidad = parametros.count("velocidad") == 0
+                ? Robot::VELOCIDAD_PREDETERMINADA_MM_S
+                : numero(parametros, "velocidad");
+            const std::string respuesta =
+                robot_.mover(x, y, z, velocidad);
+            return MensajeRPC::respuestaA(
+                solicitud,
+                {{"respuesta", respuesta},
+                 {"x", x}, {"y", y}, {"z", z},
+                 {"velocidad", velocidad},
+                 {"unidad_velocidad", "mm/s"}});
+        }
+
+        if (operacion == "activar_efector" ||
+            operacion == "desactivar_efector") {
+            validarSinParametros(parametros);
+            const bool activar = operacion == "activar_efector";
+            const std::string respuesta = activar
+                ? robot_.activarEfector()
+                : robot_.desactivarEfector();
+            return MensajeRPC::respuestaA(
+                solicitud,
+                {{"respuesta", respuesta},
+                 {"mensaje", activar
+                     ? "Efector activado."
+                     : "Efector desactivado."}});
         }
 
         if (operacion == "conectar") {
@@ -201,12 +315,18 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
         if (operacion == "estado") {
             validarSinParametros(parametros);
             if (!robot_.estaConectado()) {
+                auto actividad = estadoRobotDesconocido(
+                    robot_.modoCoordenadas());
                 return MensajeRPC::respuestaA(
                     solicitud,
                     {{"conectado", false},
                      {"posicion", datoNoDisponible(
                           "El robot esta desconectado; no se puede consultar la posicion.")},
-                     {"actividad", estadoRobotDesconocido()}});
+                     {"actividad", actividad},
+                     {"modo_trabajo",
+                      nombreModoTrabajo(robot_.modoTrabajo())},
+                     {"modo_coordenadas",
+                      nombreModoCoordenadas(robot_.modoCoordenadas())}});
             }
 
             try {
@@ -219,11 +339,17 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
                     {"ventilador", datoBooleano(
                          respuesta, "FAN ENABLED", "FAN DISABLED",
                          "el ventilador")},
-                    {"modo_coordenadas", datoModo(respuesta)}
+                    {"modo_coordenadas",
+                     datoModo(robot_.modoCoordenadas())}
                 };
                 auto resultado = crearEstado(
                     robot_.estaConectado(), posicion, actividad);
                 resultado.emplace("reporte_firmware", respuesta);
+                resultado.emplace(
+                    "modo_trabajo", nombreModoTrabajo(robot_.modoTrabajo()));
+                resultado.emplace(
+                    "modo_coordenadas",
+                    nombreModoCoordenadas(robot_.modoCoordenadas()));
                 return MensajeRPC::respuestaA(solicitud, resultado);
             } catch (const std::exception& error) {
                 auto resultado = crearEstado(
@@ -231,9 +357,14 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
                     datoNoDisponible(
                         "No se pudo obtener la posicion: " +
                         std::string(error.what())),
-                    estadoRobotDesconocido());
+                    estadoRobotDesconocido(robot_.modoCoordenadas()));
                 resultado.emplace(
                     "mensaje", "Fallo la consulta serie; revise la conexion.");
+                resultado.emplace(
+                    "modo_trabajo", nombreModoTrabajo(robot_.modoTrabajo()));
+                resultado.emplace(
+                    "modo_coordenadas",
+                    nombreModoCoordenadas(robot_.modoCoordenadas()));
                 return MensajeRPC::respuestaA(
                     solicitud, resultado, "ERROR_INTERNO");
             }
@@ -256,12 +387,19 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
                 "Puerto por defecto: COM3 en Windows o /dev/ttyACM0 en Linux.\n"
                 "desconectar: cierra la conexion serie.\n"
                 "estado: consulta M114; posicion en mm, ejes X/Y/Z/E. "
-                "Posicion y actividad se marcan no disponibles si el firmware "
-                "no las informa. No hay limites de coordenadas configurados "
-                "por esta interfaz.\n"
+                "Informa tambien los modos seleccionados.\n"
+                "seleccionar_modo_trabajo(modo): manual o automatico.\n"
+                "seleccionar_modo_coordenadas(modo): absoluto o relativo.\n"
+                "ir_a_origen: envia G28 en modo manual.\n"
+                "mover(x, y, z, velocidad?): envia G1 en modo manual. "
+                "Coordenadas en mm; velocidad entre 5 y 10 mm/s "
+                "(predeterminada: 5 mm/s).\n"
+                "activar_efector: envia M3 (cerrar pinza).\n"
+                "desactivar_efector: envia M5 (abrir pinza).\n"
                 "activar_motores: envia M17.\n"
                 "desactivar_motores: envia M18.\n"
-                "No se implementan movimientos ni otros comandos G-code.";
+                "El movimiento valida el espacio geometrico configurado "
+                "para el firmware.";
             return MensajeRPC::respuestaA(
                 solicitud, {{"comandos", ayuda}});
         }
@@ -271,8 +409,16 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
             "Operacion no reconocida o no soportada.");
     } catch (const ParametrosInvalidos& error) {
         return respuestaError(solicitud, "VALIDACION", error.what());
+    } catch (const std::invalid_argument& error) {
+        return respuestaError(solicitud, "VALIDACION", error.what());
+    } catch (const RobotModeException& error) {
+        return respuestaError(solicitud, "ESTADO_INVALIDO", error.what());
     } catch (const RobotNotConnectedException& error) {
         return respuestaError(solicitud, "ESTADO_INVALIDO", error.what());
+    } catch (const RobotCommandRejectedException& error) {
+        return respuestaError(
+            solicitud, "ESTADO_INVALIDO",
+            "El controlador rechazo la orden: " + std::string(error.what()));
     } catch (const std::exception& error) {
         return respuestaError(
             solicitud, "ERROR_INTERNO",

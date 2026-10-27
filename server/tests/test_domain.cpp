@@ -63,9 +63,75 @@ int main() {
         exigir(!actividad.at("motores").obtener<EstructuraRPC>()
                     .at("disponible").obtener<bool>(),
                "Estado debe indicar que la actividad no esta disponible.");
-        exigir(servicio.atender(MensajeRPC::solicitud("u3", "mover")).codigo() ==
-                   "OPERACION_NO_SOPORTADA",
-               "El servicio no debe exponer comandos de movimiento.");
+        exigir(actividad.at("modo_coordenadas")
+                   .obtener<EstructuraRPC>().at("disponible")
+                   .obtener<bool>() &&
+                   actividad.at("modo_coordenadas")
+                       .obtener<EstructuraRPC>().at("valor")
+                       .obtener<std::string>() == "absoluto",
+               "Estado debe informar el modo de coordenadas seleccionado.");
+        exigir(estadoDesconectado.resultado().at("modo_trabajo")
+                   .obtener<std::string>() == "manual",
+               "Estado debe informar el modo de trabajo seleccionado.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u3", "mover", {{"x", 0.0}, {"y", 170.0}, {"z", 120.0}}))
+                   .codigo() == "ESTADO_INVALIDO",
+               "Mover debe requerir una conexion serie.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u9", "mover", {{"x", "cero"}, {"y", 170.0}, {"z", 120.0}}))
+                   .codigo() == "VALIDACION",
+               "Mover debe validar el tipo de cada coordenada.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u10", "mover",
+                   {{"x", 0.0}, {"y", 170.0}, {"z", 120.0},
+                    {"velocidad", 11.0}})).codigo() == "VALIDACION",
+               "Mover debe rechazar una velocidad superior al maximo.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u18", "mover",
+                   {{"x", 0.0}, {"y", 170.0}, {"z", 120.0},
+                    {"velocidad", 4.0}})).codigo() == "VALIDACION",
+               "Mover debe rechazar velocidades que el firmware sustituye.");
+
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u11", "seleccionar_modo_trabajo",
+                   {{"modo", "automatico"}})).codigo() == "OK",
+               "Debe poder seleccionarse el modo automatico.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u12", "seleccionar_modo_coordenadas",
+                   {{"modo", "relativo"}})).codigo() == "OK",
+               "El modo de coordenadas debe seleccionarse por separado.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u13", "ir_a_origen")).codigo() == "ESTADO_INVALIDO",
+               "El origen debe rechazarse en modo automatico.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u14", "activar_efector")).codigo() == "ESTADO_INVALIDO",
+               "El efector debe rechazarse en modo automatico.");
+        const auto estadoAutomatico =
+            servicio.atender(MensajeRPC::solicitud("u15", "estado"));
+        exigir(estadoAutomatico.resultado().at("modo_trabajo")
+                   .obtener<std::string>() == "automatico" &&
+                   estadoAutomatico.resultado().at("modo_coordenadas")
+                       .obtener<std::string>() == "relativo",
+               "Los dos modos deben conservarse independientemente.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u16", "seleccionar_modo_trabajo",
+                   {{"modo", "manual"}})).codigo() == "OK",
+               "Debe poder seleccionarse el modo manual.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u17", "seleccionar_modo_coordenadas",
+                   {{"modo", "desconocido"}})).codigo() == "VALIDACION",
+               "El modo de coordenadas debe validarse.");
+
+        exigir(Robot::posicionPermitida({0.0, 170.0, 120.0}),
+               "Debe aceptarse la posicion geometrica inicial.");
+        exigir(!Robot::posicionPermitida({0.0, 0.0, 0.0}),
+               "Debe rechazarse un punto fuera del espacio de trabajo.");
+        exigir(!Robot::posicionPermitida({0.0, 170.0, -116.0}),
+               "Debe respetarse el limite de altura del firmware.");
+        exigir(Robot::VELOCIDAD_PREDETERMINADA_MM_S == 5.0 &&
+                   Robot::VELOCIDAD_MAXIMA_MM_S == 10.0,
+               "Los limites de velocidad deben coincidir con la configuracion.");
+
         exigir(servicio.atender(MensajeRPC::solicitud(
                    "u5", "activar_motores", {{"extra", true}})).codigo() ==
                    "VALIDACION", "Motores debe rechazar parametros desconocidos.");
@@ -77,8 +143,11 @@ int main() {
                                 .obtener<std::string>();
         exigir(ayuda.find("M17") != std::string::npos &&
                    ayuda.find("M18") != std::string::npos &&
-                   ayuda.find("G0") == std::string::npos,
-               "Ayuda debe limitarse a comandos de control implementados.");
+                   ayuda.find("G28") != std::string::npos &&
+                   ayuda.find("G1") != std::string::npos &&
+                   ayuda.find("M3") != std::string::npos &&
+                   ayuda.find("M5") != std::string::npos,
+               "Ayuda debe incluir los comandos de control implementados.");
         exigir(servicio.atender(MensajeRPC::solicitud("u7", "desconectar")).codigo() ==
                    "OK", "Desconectar debe poder ejecutarse sin conexion.");
 

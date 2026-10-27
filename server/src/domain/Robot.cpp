@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
+#include <iomanip>
+#include <regex>
+#include <sstream>
 #include <thread>
 
 #ifdef _WIN32
@@ -15,7 +19,11 @@
 #include <unistd.h>
 #endif
 
-Robot::Robot() : fd_serie(-1), conectado(false) {}
+Robot::Robot()
+    : fd_serie(-1),
+      conectado(false),
+      modoTrabajo_(ModoTrabajo::MANUAL),
+      modoCoordenadas_(ModoCoordenadas::ABSOLUTO) {}
 
 Robot::~Robot() {
     desconectar();
@@ -148,10 +156,13 @@ std::string Robot::limpiarRespuesta(const std::string& raw) const {
     return r;
 }
 
-std::string Robot::leerRespuesta() {
+std::string Robot::leerRespuesta(unsigned int timeoutMs) {
     std::string respuesta;
     std::string linea;
     char buffer[256];
+    const auto limite =
+        std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(timeoutMs);
 
     while (true) {
 #ifdef _WIN32
@@ -173,12 +184,17 @@ std::string Robot::leerRespuesta() {
         }
 #endif
         if (n == 0) {
+            if (std::chrono::steady_clock::now() < limite)
+                continue;
             cerrarPuerto();
             if (respuesta.empty())
                 throw std::runtime_error(
                     "Tiempo de espera agotado al leer el puerto serie.");
+            const std::string respuestaLimpia = limpiarRespuesta(respuesta);
+            validarRespuestaControlador(respuestaLimpia);
             throw std::runtime_error(
-                "Respuesta serie incompleta: no se recibio OK del firmware.");
+                "Respuesta serie incompleta: no se recibio OK del firmware. "
+                "Respuesta recibida: " + respuestaLimpia);
         }
 
         for (int i = 0; i < n; ++i) {
@@ -195,7 +211,10 @@ std::string Robot::leerRespuesta() {
     }
 }
 
-std::string Robot::enviarComandoRaw(const std::string& comando) {
+std::string Robot::enviarComandoRaw(
+    const std::string& comando,
+    unsigned int timeoutMs
+) {
     if (!conectado) {
         throw RobotNotConnectedException();
     }
@@ -206,6 +225,16 @@ std::string Robot::enviarComandoRaw(const std::string& comando) {
         cerrarPuerto();
         throw std::runtime_error(
             "Error al limpiar el puerto serie antes de escribir.");
+    }
+    COMMTIMEOUTS timeouts{};
+    timeouts.ReadIntervalTimeout = 50;
+    timeouts.ReadTotalTimeoutConstant = timeoutMs;
+    timeouts.WriteTotalTimeoutConstant = 1000;
+    if (!SetCommTimeouts(
+            reinterpret_cast<HANDLE>(fd_serie), &timeouts)) {
+        cerrarPuerto();
+        throw std::runtime_error(
+            "Error al configurar el tiempo de espera del puerto serie.");
     }
     std::size_t enviados = 0;
     while (enviados < comando.size()) {
@@ -245,7 +274,7 @@ std::string Robot::enviarComandoRaw(const std::string& comando) {
         enviados += static_cast<std::size_t>(cantidad);
     }
 #endif
-    return limpiarRespuesta(leerRespuesta());
+    return limpiarRespuesta(leerRespuesta(timeoutMs));
 }
 
 std::string Robot::obtenerEstado() {
@@ -255,4 +284,191 @@ std::string Robot::obtenerEstado() {
 std::string Robot::setMotores(bool activar) {
     std::string comando = activar ? "M17\r" : "M18\r";
     return enviarComandoRaw(comando);
+}
+
+ModoTrabajo Robot::modoTrabajo() const {
+    return modoTrabajo_;
+}
+
+ModoCoordenadas Robot::modoCoordenadas() const {
+    return modoCoordenadas_;
+}
+
+void Robot::seleccionarModoTrabajo(ModoTrabajo modo) {
+    modoTrabajo_ = modo;
+}
+
+std::string Robot::seleccionarModoCoordenadas(ModoCoordenadas modo) {
+    if (conectado) {
+        const std::string comando =
+            modo == ModoCoordenadas::ABSOLUTO ? "G90\r" : "G91\r";
+        const std::string respuesta = enviarComandoRaw(comando);
+        validarRespuestaControlador(respuesta);
+        modoCoordenadas_ = modo;
+        return respuesta;
+    }
+
+    modoCoordenadas_ = modo;
+    return "Modo seleccionado; se aplicara al conectar el robot.";
+}
+
+void Robot::exigirModoManual() const {
+    if (modoTrabajo_ != ModoTrabajo::MANUAL)
+        throw RobotModeException(
+            "La operacion solo esta disponible en modo manual.");
+}
+
+void Robot::validarRespuestaControlador(
+    const std::string& respuesta
+) const {
+    if (respuesta.find("ERROR:") != std::string::npos ||
+        respuesta.find("COMMAND NOT RECOGNIZED") != std::string::npos ||
+        respuesta.find("POINT IS OUTSIDE OF WORKSPACE") != std::string::npos) {
+        throw RobotCommandRejectedException(respuesta);
+    }
+}
+
+PosicionCartesiana Robot::obtenerPosicionActual() {
+    const std::string respuesta = enviarComandoRaw("M114\r");
+    validarRespuestaControlador(respuesta);
+
+    static const std::regex formato(
+        R"(CURRENT POSITION:\s*\[X:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s+Y:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s+Z:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s+E:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\])"
+    );
+    std::smatch coincidencia;
+    if (!std::regex_search(respuesta, coincidencia, formato))
+        throw std::runtime_error(
+            "El controlador no informo una posicion cartesiana valida.");
+
+    PosicionCartesiana posicion{
+        std::stod(coincidencia[1].str()),
+        std::stod(coincidencia[2].str()),
+        std::stod(coincidencia[3].str())
+    };
+    if (!std::isfinite(posicion.x) || !std::isfinite(posicion.y) ||
+        !std::isfinite(posicion.z))
+        throw std::runtime_error(
+            "El controlador informo una posicion cartesiana invalida.");
+    return posicion;
+}
+
+bool Robot::posicionPermitida(const PosicionCartesiana& posicion) {
+    if (!std::isfinite(posicion.x) || !std::isfinite(posicion.y) ||
+        !std::isfinite(posicion.z))
+        return false;
+
+    constexpr double longitudBrazoInferior = 120.0;
+    constexpr double longitudBrazoSuperior = 120.0;
+    constexpr double desplazamientoEfector = 50.0;
+    constexpr double cosenoAnguloMinimo = 0.791436948;
+    constexpr double cosenoAnguloMaximo = -0.774944489;
+    constexpr double alturaMinima = -115.0;
+    constexpr double alturaMaxima = 150.0;
+
+    if (posicion.z < alturaMinima || posicion.z > alturaMaxima)
+        return false;
+
+    const double radioEfector = std::hypot(posicion.x, posicion.y);
+    const double radioBrazo = radioEfector - desplazamientoEfector;
+    const double radioCuadrado =
+        radioBrazo * radioBrazo + posicion.z * posicion.z;
+    const double sumaLongitudesCuadradas =
+        longitudBrazoInferior * longitudBrazoInferior +
+        longitudBrazoSuperior * longitudBrazoSuperior;
+    const double productoLongitudes =
+        2.0 * longitudBrazoInferior * longitudBrazoSuperior;
+    const double radioMinimoCuadrado =
+        sumaLongitudesCuadradas -
+        productoLongitudes * cosenoAnguloMinimo;
+    const double radioMaximoCuadrado =
+        sumaLongitudesCuadradas -
+        productoLongitudes * cosenoAnguloMaximo;
+
+    return radioCuadrado >= radioMinimoCuadrado &&
+           radioCuadrado <= radioMaximoCuadrado;
+}
+
+std::string Robot::irAOrigen() {
+    exigirModoManual();
+    const std::string respuesta = enviarComandoRaw("G28\r", 10000);
+    validarRespuestaControlador(respuesta);
+    return respuesta;
+}
+
+std::string Robot::mover(
+    double x,
+    double y,
+    double z,
+    double velocidad
+) {
+    exigirModoManual();
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
+        throw std::invalid_argument(
+            "Las coordenadas deben ser valores numericos finitos.");
+    if (!std::isfinite(velocidad) ||
+        velocidad < VELOCIDAD_PREDETERMINADA_MM_S ||
+        velocidad > VELOCIDAD_MAXIMA_MM_S) {
+        throw std::invalid_argument(
+            "La velocidad debe estar entre 5 y 10 mm/s.");
+    }
+
+    const PosicionCartesiana actual = obtenerPosicionActual();
+    const PosicionCartesiana destino =
+        modoCoordenadas_ == ModoCoordenadas::ABSOLUTO
+            ? PosicionCartesiana{x, y, z}
+            : PosicionCartesiana{actual.x + x, actual.y + y, actual.z + z};
+    if (!posicionPermitida(actual))
+        throw std::runtime_error(
+            "La posicion actual informada por el controlador esta fuera "
+            "del espacio de trabajo.");
+    if (!posicionPermitida(destino))
+        throw std::invalid_argument(
+            "La posicion solicitada esta fuera del espacio de trabajo.");
+
+    const double distancia = std::hypot(
+        std::hypot(destino.x - actual.x, destino.y - actual.y),
+        destino.z - actual.z);
+    const int pasos = std::max(1, static_cast<int>(std::ceil(distancia)));
+    for (int paso = 1; paso <= pasos; ++paso) {
+        const double proporcion =
+            static_cast<double>(paso) / static_cast<double>(pasos);
+        const PosicionCartesiana intermedia{
+            actual.x + (destino.x - actual.x) * proporcion,
+            actual.y + (destino.y - actual.y) * proporcion,
+            actual.z + (destino.z - actual.z) * proporcion
+        };
+        if (!posicionPermitida(intermedia))
+            throw std::invalid_argument(
+                "La trayectoria atraviesa una zona fuera del espacio "
+                "de trabajo.");
+    }
+
+    const std::string modo =
+        modoCoordenadas_ == ModoCoordenadas::ABSOLUTO ? "G90\r" : "G91\r";
+    validarRespuestaControlador(enviarComandoRaw(modo));
+
+    std::ostringstream comando;
+    comando << std::fixed << std::setprecision(6)
+            << "G1 X" << x << " Y" << y << " Z" << z
+            << " F" << velocidad << '\r';
+    const unsigned int timeoutMs = static_cast<unsigned int>(
+        std::ceil(distancia / velocidad * 1000.0) + 10000.0);
+    const std::string respuesta =
+        enviarComandoRaw(comando.str(), timeoutMs);
+    validarRespuestaControlador(respuesta);
+    return respuesta;
+}
+
+std::string Robot::activarEfector() {
+    exigirModoManual();
+    const std::string respuesta = enviarComandoRaw("M3\r", 5000);
+    validarRespuestaControlador(respuesta);
+    return respuesta;
+}
+
+std::string Robot::desactivarEfector() {
+    exigirModoManual();
+    const std::string respuesta = enviarComandoRaw("M5\r", 5000);
+    validarRespuestaControlador(respuesta);
+    return respuesta;
 }

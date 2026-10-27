@@ -94,7 +94,19 @@ También se puede ejecutar `make test` estando dentro de server. `make -C server
 
 El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, y el servicio conserva el ID de la solicitud en su respuesta. `ServicioRobot` delega las operaciones serie a una instancia de `Robot` compartida por el servidor. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado y solicitar comandos de motores. `estado` indica expresamente los datos que el firmware no informa. La interfaz del servidor no expone comandos de movimiento. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado, seleccionar modos y controlar motores, origen, movimiento cartesiano y efector. Origen, movimiento y efector requieren modo manual y conexión. `estado` informa los modos seleccionados y marca expresamente como no disponibles los datos que el firmware no reporta. Ver `docs/CONTRATO.md` y `docs/backlog/US-10.md` a `US-13.md` para el contrato y las pruebas. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+
+Comandos de control por consola (requieren usuario y clave al iniciar):
+
+```powershell
+python client/main.py modo-trabajo manual
+python client/main.py modo-coordenadas absoluto
+python client/main.py origen
+python client/main.py mover 0 170 120 --velocidad 5
+python client/main.py activar-efector
+python client/main.py desactivar-efector
+python client/main.py estado
+```
 
 El firmware se conserva como recurso y no se compila con el Makefile del servidor. Los warnings de parámetros no utilizados provienen del código original de XmlRpc++.
 

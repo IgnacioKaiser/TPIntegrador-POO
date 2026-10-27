@@ -87,3 +87,40 @@ Autenticador comprueba credenciales y estado consultando el repositorio en cada 
 Se conserva ServicioPrueba como objeto separado y se hace virtual su operacion atender para sustituirlo en pruebas por un servicio espia. Esto permite comprobar que no se invoca con credenciales rechazadas, sin inventar movimientos del robot ni agregar contadores al servicio de produccion.
 
 La consola Python usa getpass y conserva las credenciales en memoria; no se agregan argumentos con contrasenas ni archivos de sesion. Cada peticion vuelve a enviarlas. La base existente no cambia de esquema. El servidor exige un administrador habilitado al arrancar. La habilitacion remota sigue fuera de este hito (US-05); las pruebas cambian el estado directamente sobre bases temporales.
+
+## Actualizacion US-10 a US-13: control manual
+
+El estado de modo de trabajo y de coordenadas vive en `Robot` y se representa
+con dos enumeraciones distintas. El primero inicia en manual y el segundo en
+absoluto. `G90`/`G91` implementan las coordenadas del firmware; se repite el
+modo seleccionado antes de cada movimiento para sincronizarlo incluso si fue
+seleccionado estando desconectado.
+
+Los comandos manuales son `G28` para origen, `G1` para movimiento, `M3` para
+cerrar la pinza y `M5` para abrirla, según el firmware actual. Origen,
+movimiento y efector validan modo manual y conexión en el dominio, no solo en
+la interfaz.
+
+El movimiento replica los límites geométricos de `config.h` y usa velocidad
+por defecto de 5 mm/s y máxima de 10 mm/s. El firmware transforma valores
+menores de 5 mm/s en una velocidad automática; por eso no se aceptan como
+velocidad explícita. El cambio no agrega bibliotecas ni altera el sobre XML-RPC
+de seis campos; se agregan operaciones y parámetros en el contrato de
+aplicación. Los tiempos de espera serie se ajustan por operación: las órdenes
+con ejecución diferida como `G28`, `G1` y `M3`/`M5` requieren más tiempo que
+una consulta de estado, por lo que un límite único de un segundo cortaba la
+respuesta antes del `OK`.
+
+## Prueba US-10 a US-13 en Arduino simulado
+
+El 27/10/2026 se detectó en Windows un Arduino por USB-serie CH340 (COM5). El
+controlador aceptó `G90`, `G91`, `G28`, `M3` y `M5`. `G28` tardaba tres
+segundos en la simulación, por encima del timeout previo; el timeout por
+comando permitió recibir `HOMING COMPLETE` y `OK`. El firmware de simulación
+define `SIMULATION=true` y compila sin escrituras a los pines de motores y
+pinza.
+
+La respuesta `M114` no incluyó la línea de posición esperada. Por eso `G1` no
+se envió desde `Robot::mover`: no se debe validar una trayectoria sin conocer
+el punto actual, en especial en modo relativo. La prueba de movimiento queda
+pendiente hasta que el firmware entregue coordenadas interpretables.
