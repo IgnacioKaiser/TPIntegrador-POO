@@ -82,7 +82,7 @@ class MetodoIntercambiar final
 public:
     MetodoIntercambiar(
         XmlRpc::XmlRpcServer& servidor,
-        const ServicioPrueba& servicio
+        const ServicioRobot& servicio
     )
         : XmlRpcServerMethod(
             "robot.intercambiar", &servidor),
@@ -140,13 +140,13 @@ public:
     }
 
 private:
-    const ServicioPrueba& servicio_;
+    const ServicioRobot& servicio_;
 };
 
 } // namespace
 
 ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto)
-    : puerto_(puerto) {
+    : puerto_(puerto), robot_(), servicio_(robot_) {
 
     if (puerto == 0)
         throw ErrorServidor(
@@ -183,7 +183,7 @@ void ServidorXmlRpc::ejecutar() {
         << "Servidor XML-RPC\n"
         << "Direccion: http://127.0.0.1:"
         << puerto_ << "/RPC2\n"
-        << "Operaciones: ping, eco. Cerrar con Ctrl+C."
+        << "Operaciones: ping, eco y control serie del robot. Cerrar con Ctrl+C."
         << std::endl;
 
     while (!detener)

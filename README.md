@@ -1,11 +1,12 @@
-# TP integrador — comunicación v0.2 reorganizada
+# TP integrador — comunicación y control serie del robot
 
-Mismo funcionamiento de robot_rpc_v0_2, organizado según el acuerdo del grupo. Servidor C++ con XmlRpc++ del profesor, cliente Python por consola y firmware original completo. No se incorporan nuevas funciones de robot.
+Servidor C++ con XmlRpc++ del profesor, cliente Python por consola y firmware original completo. El servidor permite conectar con el Arduino por puerto serie y ejecutar las operaciones de control documentadas en `docs/CONTRATO.md`.
 
 ## Organización
 
 - `server/xmlrpc/`: biblioteca XmlRpc++ original, licencia y ejemplos, separados del código propio.
 - `server/include/robotrpc/` y `server/src/`: clases de mensajes, servicio y servidor.
+- `server/include/domain/Robot.h` y `server/src/domain/Robot.cpp`: conexión serie multiplataforma y comandos enviados al Arduino.
 - `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, sin modificar. Se compilan pero todavía no se utilizan para registrar eventos.
 - `server/examples/tp2_logger/`: main y datos de ejemplo originales del logger.
 - `server/tests/`: pruebas C++ y de integración cliente-servidor.
@@ -90,8 +91,8 @@ También se puede ejecutar `make test` estando dentro de server. `make -C server
 
 ## Alcance conservado
 
-El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, el servicio procesa ping/eco y devuelve la respuesta con el mismo ID. El dominio no depende de XmlRpc++. Ver docs/CONTRATO.md.
+El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, y el servicio conserva el ID de la solicitud en su respuesta. `ServicioRobot` delega las operaciones serie a una instancia de `Robot` compartida por el servidor. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. No hay todavía autenticación, SQLite, puerto serie ni ejecución de G-Code. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. No hay todavía autenticación ni SQLite; por lo tanto, la autorización por roles para conectar y desconectar queda pendiente. Para usar el robot, conectarlo con `conectar` (opcionalmente indicando `puerto`) antes de invocar `activar_motores` o `desactivar_motores`. `estado` informa desconexión y los datos no disponibles sin consultar el puerto. La interfaz actual no expone comandos de movimiento. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
 
 El firmware se conserva como recurso y no se compila con el Makefile del servidor. Los warnings de parámetros no utilizados provienen del código original de XmlRpc++.

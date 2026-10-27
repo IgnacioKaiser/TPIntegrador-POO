@@ -2,7 +2,7 @@
 
 ## Alcance
 
-Adaptacion sobre master 8bb7719. Mantiene ping, eco, el contrato de seis campos y la escucha local en 127.0.0.1. No agrega autenticacion, control serie ni funciones del robot.
+Adaptacion sobre master 8bb7719. Mantiene ping, eco, el contrato de seis campos y la escucha local en 127.0.0.1. La clase `Robot` agrega control serie multiplataforma del Arduino, sin agregar autenticacion.
 
 ## Herramientas en Windows
 
@@ -42,13 +42,14 @@ En VS Code, la tarea Compilar selecciona mingw32-make en Windows. Si IntelliSens
 
 - Makefile: elige comandos de creacion/borrado de carpetas, Python, extension .exe, entorno de pruebas y enlace con ws2_32 segun el sistema. Usa _WINDOWS porque la biblioteca original consulta esa macro; _WIN32 la define el compilador.
 - servidor.cpp: incluye Winsock en Windows; mantiene arpa/inet.h en Linux. Configura un puerto exclusivo en Windows y usa signal para SIGINT/SIGTERM. Solo Linux ignora SIGPIPE.
+- Robot.cpp: configura el puerto a 115200 baudios, 8N1 y maneja la conexion serie mediante Win32 en Windows y termios en Linux.
 - Logger_396.cpp: usa localtime_s en Windows y localtime_r en Linux, comprobando el resultado.
 - XmlRpc++: usa SocketHandle (uintptr_t en Windows e int en Linux) e InvalidSocket. Propaga el tipo por las conexiones y el dispatcher para evitar truncar handles en 64 bits. Adapta los formatos de diagnostico. Winsock ignora el primer parametro de select.
 - XmlRpcSocket.cpp: distingue errores transitorios de Winsock de los de POSIX. Elimina un using namespace std anterior a las cabeceras de Windows que causaba ambiguedad con std::byte en C++17.
 - test_integration.py: selecciona explicitamente robot_server.exe en Windows.
 - Configuracion VS Code y documentos: reflejan los comandos y las adaptaciones de las fuentes importadas.
 
-La logica de mensajes y servicios permanece igual. La biblioteca sigue conservando su licencia; ya no es una copia byte a byte de la importacion inicial.
+La biblioteca sigue conservando su licencia; ya no es una copia byte a byte de la importacion inicial.
 
 ## Verificacion realizada el 26 de octubre de 2026
 
@@ -57,3 +58,11 @@ La logica de mensajes y servicios permanece igual. La biblioteca sigue conservan
 - No se ejecutaron binarios Windows en ese entorno. Sigue pendiente verificar compilacion nativa con MSYS2 UCRT64 GCC 15.2, recetas de cmd.exe, pruebas y Ctrl+C en la PC del equipo.
 
 No se verifico todavia comunicacion con Arduino ni entre dos computadoras.
+
+## Verificacion adicional del control Robot (27 de octubre de 2026)
+
+- Compilacion nativa Windows con MinGW-w64 g++: servidor y prueba C++ correctos. Los warnings restantes corresponden a parametros no usados en XmlRpc++ original.
+- Pruebas de dominio C++: 22 comprobaciones correctas.
+- Pruebas unitarias del cliente Python: 10 pruebas correctas.
+- Pruebas de integracion cliente-servidor: 19 pruebas correctas, incluyendo operaciones con el robot desconectado y fallo al abrir un puerto inexistente.
+- El puerto serie real y el firmware no se probaron con un Arduino conectado.

@@ -79,7 +79,7 @@ class IntegracionTests(unittest.TestCase):
         self.assertEqual(self.servicios.eco("").resultado["texto"], "")
 
     def test_operacion_desconocida_es_error_de_aplicacion(self):
-        respuesta = self.cliente.enviar(MensajeRPC.solicitud("mover"))
+        respuesta = self.cliente.enviar(MensajeRPC.solicitud("volar"))
         self.assertEqual(respuesta.codigo, "OPERACION_NO_SOPORTADA")
         self.assertIn("mensaje", respuesta.resultado)
 
@@ -89,6 +89,8 @@ class IntegracionTests(unittest.TestCase):
             ("eco", {}),
             ("eco", {"texto": 123}),
             ("eco", {"texto": "hola", "extra": True}),
+            ("mover", {"x": 1.0, "y": 2.0}),
+            ("activar_motores", {"extra": True}),
         ):
             with self.subTest(operacion=operacion, parametros=parametros):
                 respuesta = self.cliente.enviar(
@@ -97,6 +99,47 @@ class IntegracionTests(unittest.TestCase):
                 self.assertEqual(respuesta.codigo, "VALIDACION")
                 self.assertIn("mensaje", respuesta.resultado)
         self.assertEqual(self.servicios.ping().codigo, "OK")
+
+    def test_operaciones_robot_sin_conexion(self):
+        for operacion, parametros in (
+            ("activar_motores", {}),
+            ("desactivar_motores", {}),
+        ):
+            with self.subTest(operacion=operacion):
+                respuesta = self.cliente.enviar(
+                    MensajeRPC.solicitud(operacion, parametros)
+                )
+                self.assertEqual(respuesta.codigo, "ESTADO_INVALIDO")
+                self.assertIn("mensaje", respuesta.resultado)
+
+    def test_estado_desconectado_informa_datos_no_disponibles(self):
+        respuesta = self.cliente.enviar(MensajeRPC.solicitud("estado"))
+        self.assertEqual(respuesta.codigo, "OK")
+        self.assertFalse(respuesta.resultado["conectado"])
+        self.assertFalse(respuesta.resultado["posicion"]["disponible"])
+        self.assertIn("mensaje", respuesta.resultado["posicion"])
+        for dato in respuesta.resultado["actividad"].values():
+            self.assertFalse(dato["disponible"])
+            self.assertIn("mensaje", dato)
+
+    def test_ayuda_y_desconexion_no_requieren_robot(self):
+        ayuda = self.cliente.enviar(MensajeRPC.solicitud("ayuda"))
+        self.assertEqual(ayuda.codigo, "OK")
+        self.assertIn("M17", ayuda.resultado["comandos"])
+        self.assertIn("M18", ayuda.resultado["comandos"])
+        self.assertNotIn("G0", ayuda.resultado["comandos"])
+        self.assertIn("no hay limites", ayuda.resultado["comandos"])
+        desconexion = self.cliente.enviar(MensajeRPC.solicitud("desconectar"))
+        self.assertEqual(desconexion.codigo, "OK")
+
+    def test_conexion_rechaza_puerto_inexistente(self):
+        respuesta = self.cliente.enviar(
+            MensajeRPC.solicitud(
+                "conectar", {"puerto": "puerto-inexistente"}
+            )
+        )
+        self.assertEqual(respuesta.codigo, "ERROR_CONEXION")
+        self.assertIn("mensaje", respuesta.resultado)
 
     def test_argumentos_xmlrpc_invalidos_y_recuperacion(self):
         for argumentos in ((), ("texto",), ({}, {})):

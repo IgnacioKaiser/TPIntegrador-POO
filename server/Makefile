@@ -25,11 +25,11 @@ endif
 
 RPC_SOURCES := $(wildcard xmlrpc/XmlRpc*.cpp)
 LOG_SOURCES := $(wildcard src/tp2_logger/*.cpp)
-APP_SOURCES := $(wildcard src/*.cpp)
+APP_SOURCES := $(wildcard src/*.cpp) $(wildcard src/domain/*.cpp)
 RPC_OBJECTS := $(patsubst %.cpp,build/%.o,$(RPC_SOURCES))
 LOG_OBJECTS := $(patsubst %.cpp,build/%.o,$(LOG_SOURCES))
 APP_OBJECTS := $(patsubst %.cpp,build/%.o,$(APP_SOURCES))
-DOMAIN_OBJECTS := build/src/mensaje.o build/src/servicio.o
+DOMAIN_OBJECTS := build/src/mensaje.o build/src/servicio.o build/src/domain/Robot.o
 RPC_LIB := build/libxmlrpcpp.a
 LOG_LIB := build/libtp2_logger.a
 SERVER := build/robot_server$(EXE)

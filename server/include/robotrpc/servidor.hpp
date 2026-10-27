@@ -1,5 +1,6 @@
 #pragma once
 #include "robotrpc/servicio.hpp"
+#include "domain/Robot.h"
 #include <stdexcept>
 
 namespace robotrpc {
@@ -16,7 +17,8 @@ public:
 
 private:
     unsigned short puerto_;
-    ServicioPrueba servicio_;
+    Robot robot_;
+    ServicioRobot servicio_;
 };
 
 } // namespace robotrpc
