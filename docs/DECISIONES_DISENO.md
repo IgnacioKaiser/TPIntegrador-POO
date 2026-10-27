@@ -2,7 +2,7 @@
 
 Fecha: 26 de octubre de 2026.
 Base revisada: master, commit f4be8c1.
-Estado: US-04 verificada por el equipo en Windows. US-03 implementada en el entregable del hito 2 y pendiente de verificacion nativa del equipo.
+Estado: US-03 y US-04 implementadas y verificadas por el equipo; los apartados de cada hito conservan su contexto historico. Para el estado actual ver ESTADO_PROYECTO.md.
 
 ## Objetivo y orden
 
@@ -87,3 +87,36 @@ Autenticador comprueba credenciales y estado consultando el repositorio en cada 
 Se conserva ServicioPrueba como objeto separado y se hace virtual su operacion atender para sustituirlo en pruebas por un servicio espia. Esto permite comprobar que no se invoca con credenciales rechazadas, sin inventar movimientos del robot ni agregar contadores al servicio de produccion.
 
 La consola Python usa getpass y conserva las credenciales en memoria; no se agregan argumentos con contrasenas ni archivos de sesion. Cada peticion vuelve a enviarlas. La base existente no cambia de esquema. El servidor exige un administrador habilitado al arrancar. La habilitacion remota sigue fuera de este hito (US-05); las pruebas cambian el estado directamente sobre bases temporales.
+
+## D09. Primer avance US-23 sin consulta de permisos (historico; actualizado por D10)
+
+Consumir solo las operaciones publicadas en origin/ConState, commit bebb692,
+reutilizando mensajes, transporte y credenciales por solicitud. No cambiar el contrato
+ni inferir roles: esa referencia no ofrece una consulta de identidad o permisos.
+Conectar y desconectar se rotulan como administrativas y se muestra el rechazo
+del servidor. Filtrar el menu queda pendiente de una respuesta autenticada acordada;
+inventar una consulta o confiar en un rol declarado por el cliente seria incorrecto.
+
+Presentar todos los datos devueltos, incluidos los anidados y los parciales de errores.
+Conservar los indicadores disponible para no confundir datos desconocidos con ceros
+o estados inactivos. La confirmacion del firmware no prueba una accion fisica;
+un fallo de comunicacion no habilita reintentos automaticos. Ver docs/backlog/US-23.md
+para cambios, ejemplos, pruebas y limites de este avance.
+
+## D10. Identidad autenticada para el menu US-23 (27/10/2026)
+
+Agregar usuario.actual dentro de ServicioProtegido, despues de autenticar. Reutiliza
+el Usuario ya obtenido y devuelve solo nombre y rol, sin otra consulta a la base,
+sesiones ni cambios en Robot. Rechaza parametros adicionales. El contrato exacto
+se mantiene en CONTRATO.md, no en una segunda definicion.
+
+Elegimos devolver los dos roles existentes en lugar de crear una lista de permisos
+o una jerarquia nueva: alcanza para las opciones actuales y es el alcance solicitado.
+El cliente usa el rol para presentar el menu; la autorizacion sigue en el servidor
+en cada pedido. Si faltan datos o el rol es desconocido no se abre el menu operativo.
+Los comandos directos conservan el rechazo del servidor. El menu no se abre tampoco
+contra una version vieja que no implemente usuario.actual; se informa su respuesta.
+
+Se incorpora origin/master (0add6a5) en us-23-cliente conservando el avance previo.
+Las operaciones futuras se integraran cuando existan; agregar identidad no significa
+dar por terminadas las US-10 a US-13 ni toda la US-23.

@@ -42,7 +42,13 @@ python client/main.py ping
 python client/main.py eco "Hola desde Windows"
 ```
 
-Sin argumentos, `python client/main.py` abre el menu. Cerrar el servidor con Ctrl+C.
+Sin argumentos, `python client/main.py` consulta `usuario.actual` y abre el menu
+segun el rol autenticado. Conectar, desconectar y administrar operadores solo se
+muestran al administrador; todos los pedidos siguen verificandose en el servidor.
+Un rechazo o un rol desconocido impide abrir el menu. Los comandos directos
+conservan los controles del servidor. Ver [US-23](docs/backlog/US-23.md) para las
+seis operaciones del robot disponibles y pruebas con bases temporales.
+Cerrar el servidor con Ctrl+C.
 
 Pruebas automaticas (inician y terminan su propio servidor):
 

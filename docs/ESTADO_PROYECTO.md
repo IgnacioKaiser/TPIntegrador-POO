@@ -1,6 +1,8 @@
 # Estado del proyecto
 
-Fecha de revision: 27/10/2026. Base revisada en GitHub: cd3d4bc (master).
+Fecha de revision: 27/10/2026. Rama de trabajo: us-23-cliente.
+Avance previo guardado en caae6ff; origin/master (0add6a5) incorporado sin conflictos
+mediante bed1f29. Rama us-23-cliente publicada; no se modifico master.
 Este documento es una fotografia, no una declaracion permanente. Antes de una nueva tarea, verificar el commit actual y actualizar lo que cambio.
 
 ## Producto
@@ -11,7 +13,22 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - Compatibilidad de compilacion con Windows/Linux.
 - US-04: SQLite para usuarios y roles; credenciales con libsodium. Herramienta usuarios_admin para inicializar, agregar y listar. Pruebas y uso manual verificados por el equipo en Windows.
 - US-03: Autenticador y ServicioProtegido validan cada solicitud. Pruebas originales del dominio (15), cliente Python (10), usuarios, autenticacion e integracion (18 en ese hito) correctas en Windows segun salidas del equipo. No asumir que esos conteos permanecen iguales tras nuevos cambios.
-- US-05: integrado en master mediante PR #1. Agrega usuario.habilitar y usuario.deshabilitar para administradores. Se revisaron codigo y documentacion; en esta revision del 27/10 no se ejecutaron nuevamente sus pruebas.
+- US-05: integrado en master mediante PR #1. Agrega usuario.habilitar y usuario.deshabilitar para administradores. Sus pruebas de cliente, usuarios y autenticacion se ejecutaron nuevamente con la suite completa de esta etapa.
+- US-23 (avance integrado en la rama de trabajo): cliente con conectar (puerto opcional),
+  desconectar, estado, activar_motores, desactivar_motores y ayuda, por terminal y menu.
+  Muestra datos anidados, disponibilidad y errores parciales. Agrega usuario.actual
+  en ServicioProtegido y consulta el rol autenticado antes de abrir el menu; las
+  opciones administrativas solo aparecen a ADMINISTRADOR. Cada pedido sigue protegido.
+  Compilacion y suite completa correctas en Windows nativo/MSYS2 UCRT64/Python 3.14.0:
+  dominio, usuarios, autenticacion, 29 pruebas del cliente simuladas y 26 de integracion
+  con el ejecutable C++ real y bases temporales. El usuario verifico manualmente
+  contra el servidor real ayuda, ping, estado desconectado y rechazo de ambos comandos
+  de motores sin conexion; el menu continua correctamente. Sin verificacion de Arduino.
+  Tambien verifico conexion fallida como administrador y rechazo de conectar como
+  operador. Desconexion, permisos, identidad, cuenta deshabilitada y clave incorrecta
+  estan cubiertos por las pruebas automaticas reales. Pendientes: integracion futura
+  de US-10 a US-13, prueba del cliente con Arduino y suite nueva en Linux.
+  La US-23 completa sigue abierta. Ver backlog/US-23.md.
 
 ## Arquitectura vigente
 - Cliente: cli.py presenta; cliente.py transporta y construye solicitudes; mensaje.py representa datos.
@@ -22,8 +39,12 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - firmware/arduino/robotArm_v0.62sim contiene el codigo provisto. No equivale a tener el puerto serie conectado.
 
 ## Trabajo paralelo y pendientes
-El usuario informa que un companero trabaja en tareas del robot, posiblemente US-07 a US-13; el alcance exacto no esta confirmado. No tomar los responsables/estados del CSV Jira como confirmacion. Consultar el reparto antes de editar la conexion, el modelo del robot, movimientos y modos.
-En master revisado no se encontro aun implementacion de control serie del robot. Puede existir trabajo local no publicado.
+El companero publico US-06 a US-09 (conexion, estado, motores y ayuda), incorporadas
+desde master. El usuario autoriza ahora agregar usuario.actual en ServicioProtegido
+y adaptar el cliente, sin cambiar Robot ni las operaciones de control del companero.
+US-10 a US-13 siguen fuera de esta implementacion; coordinar sus contratos antes
+de agregarlas. No tomar responsables/estados de Jira como evidencia ni asumir que
+lo publicado representa todo el trabajo local de otro integrante.
 Pendientes generales: conexion/estado/control del robot; tareas G-Code, propiedad y ejecucion; log e informes; CLI administrativa completa; coordinacion de acceso; entrega y diagramas.
 US-18 (log CSV) y US-15/US-16 (almacenamiento/listado de trayectorias) son opciones para el siguiente trabajo, no asignaciones confirmadas.
 

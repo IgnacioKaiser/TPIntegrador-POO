@@ -94,6 +94,29 @@ class ServiciosPrueba:
     def eco(self, texto: str) -> MensajeRPC:
         return self._enviar("eco", {"texto": texto})
 
+    def usuario_actual(self) -> MensajeRPC:
+        return self._enviar("usuario.actual")
+
+    def conectar(self, puerto: str | None = None) -> MensajeRPC:
+        # Al omitir puerto, el servidor elige el predeterminado de su sistema.
+        parametros = {} if puerto is None else {"puerto": puerto}
+        return self._enviar("conectar", parametros)
+
+    def desconectar(self) -> MensajeRPC:
+        return self._enviar("desconectar")
+
+    def estado(self) -> MensajeRPC:
+        return self._enviar("estado")
+
+    def activar_motores(self) -> MensajeRPC:
+        return self._enviar("activar_motores")
+
+    def desactivar_motores(self) -> MensajeRPC:
+        return self._enviar("desactivar_motores")
+
+    def ayuda(self) -> MensajeRPC:
+        return self._enviar("ayuda")
+
     def habilitar_operador(self, usuario: str) -> MensajeRPC:
         return self._enviar("usuario.habilitar", {"usuario": usuario})
 
