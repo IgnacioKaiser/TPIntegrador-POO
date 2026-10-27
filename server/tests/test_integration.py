@@ -89,7 +89,7 @@ class IntegracionTests(unittest.TestCase):
             ("eco", {}),
             ("eco", {"texto": 123}),
             ("eco", {"texto": "hola", "extra": True}),
-            ("mover", {"x": 1.0, "y": 2.0}),
+            ("ayuda", {"extra": True}),
             ("activar_motores", {"extra": True}),
         ):
             with self.subTest(operacion=operacion, parametros=parametros):
@@ -128,9 +128,10 @@ class IntegracionTests(unittest.TestCase):
         self.assertIn("M17", ayuda.resultado["comandos"])
         self.assertIn("M18", ayuda.resultado["comandos"])
         self.assertNotIn("G0", ayuda.resultado["comandos"])
-        self.assertIn("no hay limites", ayuda.resultado["comandos"])
+        self.assertIn("no hay limites", ayuda.resultado["comandos"].lower())
         desconexion = self.cliente.enviar(MensajeRPC.solicitud("desconectar"))
         self.assertEqual(desconexion.codigo, "OK")
+        self.assertFalse(desconexion.resultado["conectado"])
 
     def test_conexion_rechaza_puerto_inexistente(self):
         respuesta = self.cliente.enviar(
@@ -139,6 +140,7 @@ class IntegracionTests(unittest.TestCase):
             )
         )
         self.assertEqual(respuesta.codigo, "ERROR_CONEXION")
+        self.assertFalse(respuesta.resultado["conectado"])
         self.assertIn("mensaje", respuesta.resultado)
 
     def test_argumentos_xmlrpc_invalidos_y_recuperacion(self):

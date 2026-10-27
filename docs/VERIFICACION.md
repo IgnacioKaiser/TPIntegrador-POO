@@ -25,8 +25,10 @@ Se conectó `ServicioRobot` al servidor, se agregó `Robot.cpp` a la compilació
 | Grupo | Resultado |
 | --- | --- |
 | Compilación nativa del servidor y prueba C++ | Correcta. |
-| Dominio/servicio C++ | 22 comprobaciones correctas. |
+| Dominio/servicio C++ | Comprobaciones correctas. |
 | Pruebas unitarias Python | 10 pruebas correctas. |
-| Pruebas de integración | 19 pruebas correctas. |
+| Pruebas de integración | 20 pruebas correctas. |
 
-Las pruebas cubren la validación de parámetros, las respuestas cuando el robot está desconectado y el rechazo de un puerto serie inexistente. No se verificó la conexión física con Arduino ni la ejecución de movimientos sobre el robot.
+Las pruebas cubren la validación de parámetros, el estado explícito cuando el robot está desconectado, los datos no disponibles, la ayuda sin comandos de movimiento y el rechazo de un puerto serie inexistente. No se verificó la ejecución de movimientos sobre el robot.
+
+Se verificó físicamente el 27 de octubre de 2026 con el Arduino en `COM5`: conectar, consultar `M114` y desconectar respondieron `OK`. El firmware informó modo absoluto, motores desactivados y ventilador desactivado; la posición se devolvió explícitamente como no disponible porque la respuesta no contenía `CURRENT POSITION`. No se enviaron comandos de activación de motores ni de movimiento. La autorización por rol sigue pendiente hasta incorporar autenticación.

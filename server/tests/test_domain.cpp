@@ -101,7 +101,7 @@ int main() {
         exigir(copiado.parametros().at("lista").obtener<ValorRPC::Arreglo>().size() == 4,
                "Los valores anidados se perdieron.");
 
-        std::cout << "22 comprobaciones del modelo y el servicio: OK\n";
+        std::cout << "Comprobaciones del modelo y el servicio: OK\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
