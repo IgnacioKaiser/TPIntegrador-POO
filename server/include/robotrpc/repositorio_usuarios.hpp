@@ -26,6 +26,10 @@ public:
     std::vector<Usuario> listar() const;
     bool verificarClave(const std::string& nombre, const std::string& clave) const;
 
+    // US-05: solo modifica cuentas OPERADOR. No cambia rol ni contrasena.
+    // Devuelve false si el nombre no corresponde a un operador existente.
+    bool cambiarHabilitacionOperador(const std::string& nombre, bool habilitado);
+
 private:
     sqlite3* db_ = nullptr;
     void ejecutar(const char* sql) const;

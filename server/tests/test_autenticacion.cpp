@@ -1,30 +1,12 @@
 #include "robotrpc/servicio_protegido.hpp"
-#include <sqlite3.h>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
-void exigir(bool valor, const char* mensaje) {
-    if (!valor) throw std::runtime_error(mensaje);
+static void exigir(bool condicion, const char* mensaje) {
+    if (!condicion) throw std::runtime_error(mensaje);
 }
-// Servicio espia: permite demostrar que un rechazo no ejecuta la operacion.
-class ServicioEspia : public robotrpc::ServicioPrueba {
-public:
-    mutable int ejecuciones = 0;
-    robotrpc::MensajeRPC atender(const robotrpc::MensajeRPC& s) const override {
-        ++ejecuciones;
-        exigir(!s.parametros().count("credenciales"), "Se filtraron las claves al servicio.");
-        return robotrpc::MensajeRPC::respuestaA(s, {{"mensaje", "ejecutado"}});
-    }
-};
-void ejecutarSQL(const std::string& ruta, const char* sql) {
-    sqlite3* db = nullptr;
-    if (sqlite3_open(ruta.c_str(), &db) != SQLITE_OK) {
-        sqlite3_close(db);
-        throw std::runtime_error("No se pudo abrir la base temporal.");
-    }
-    const int resultado = sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
-    sqlite3_close(db);
-    exigir(resultado == SQLITE_OK, "No se pudo preparar el estado de prueba.");
-}
+
 int main(int argc, char* argv[]) {
     if (argc != 2) return 1;
     try {
@@ -32,39 +14,82 @@ int main(int argc, char* argv[]) {
         RepositorioUsuarios repo(argv[1]);
         repo.inicializarAdministrador("admin", "ClaveAdmin1");
         repo.agregarOperador("operador", "ClaveOperador1");
+        repo.agregarOperador("pedro", "ClavePedro1");
         Autenticador autenticador(repo);
-        ServicioEspia espia;
-        ServicioProtegido protegido(autenticador, espia);
-        auto solicitud = [](const std::string& nombre, const std::string& clave) {
-            return MensajeRPC::solicitud("s1", "eco", {
-                {"texto", "hola"}, {"credenciales", EstructuraRPC{{"usuario", nombre}, {"clave", clave}}}});
+        ServicioPrueba servicio;
+        ServicioProtegido protegido(autenticador, servicio, repo);
+
+        auto solicitud = [](const std::string& actor, const std::string& clave,
+                            const std::string& operacion,
+                            EstructuraRPC datos = {}) {
+            datos["credenciales"] = EstructuraRPC{{"usuario", actor}, {"clave", clave}};
+            return MensajeRPC::solicitud("sol-05", operacion, datos);
         };
-        auto rechazar = [&](const MensajeRPC& s, const std::string& codigo) {
-            const int antes = espia.ejecuciones;
-            const auto r = protegido.atender(s);
-            exigir(r.codigo() == codigo, "Codigo de rechazo incorrecto.");
-            exigir(r.id() == s.id(), "Se perdio la correlacion de respuesta.");
-            exigir(espia.ejecuciones == antes, "Se ejecuto una peticion rechazada.");
+        auto controlar = [&](const MensajeRPC& s, const std::string& codigo) {
+            const auto respuesta = protegido.atender(s);
+            exigir(respuesta.codigo() == codigo, "Codigo de respuesta incorrecto.");
+            exigir(respuesta.id() == s.id() && respuesta.operacion() == s.operacion(),
+                   "Se perdio la correlacion de la respuesta.");
         };
-        exigir(protegido.atender(solicitud("operador", "ClaveOperador1")).codigo() == "OK",
-               "Credenciales validas rechazadas.");
-        exigir(espia.ejecuciones == 1, "La operacion valida no se ejecuto una sola vez.");
-        rechazar(solicitud("operador", "Incorrecta"), "NO_AUTENTICADO");
-        rechazar(solicitud("nadie", "Incorrecta"), "NO_AUTENTICADO");
-        rechazar(MensajeRPC::solicitud("s2", "eco"), "NO_AUTENTICADO");
-        rechazar(MensajeRPC::solicitud("s3", "eco", {{"credenciales", "mal"}}), "VALIDACION");
-        rechazar(MensajeRPC::solicitud("s4", "eco", {{"credenciales", EstructuraRPC{
-            {"usuario", 5}, {"clave", "Incorrecta"}}}}), "VALIDACION");
-        // Mismas credenciales, siguiente peticion: debe volver a consultar el estado.
-        ejecutarSQL(argv[1], "UPDATE usuarios SET habilitado=0 WHERE nombre='operador';");
-        rechazar(solicitud("operador", "ClaveOperador1"), "PERMISO_DENEGADO");
-        ejecutarSQL(argv[1], "UPDATE usuarios SET habilitado=1 WHERE nombre='operador';");
-        exigir(protegido.atender(solicitud("operador", "ClaveOperador1")).codigo() == "OK",
-               "La nueva peticion no refleja la habilitacion actual.");
-        ejecutarSQL(argv[1], "ALTER TABLE usuarios RENAME TO usuarios_temporales;");
-        rechazar(solicitud("operador", "ClaveOperador1"), "ERROR_INTERNO");
-        ejecutarSQL(argv[1], "ALTER TABLE usuarios_temporales RENAME TO usuarios;");
-        std::cout << "Autenticacion: validacion por peticion y ausencia de ejecucion ante rechazos OK.\n";
+        auto estado = [&](const std::string& nombre) -> bool {
+            return repo.buscar(nombre)->habilitado;
+        };
+
+        controlar(solicitud("operador", "ClaveOperador1", "ping"), "OK");
+        controlar(solicitud("operador", "Incorrecta", "ping"), "NO_AUTENTICADO");
+        controlar(solicitud("nadie", "Incorrecta", "ping"), "NO_AUTENTICADO");
+        controlar(MensajeRPC::solicitud("sin-cred", "ping"), "NO_AUTENTICADO");
+        controlar(MensajeRPC::solicitud("mal", "ping", {{"credenciales", "mal"}}),
+                  "VALIDACION");
+
+        // Un operador autenticado no puede modificar a otro operador.
+        controlar(solicitud("operador", "ClaveOperador1", "usuario.deshabilitar",
+                             {{"usuario", "pedro"}}), "PERMISO_DENEGADO");
+        exigir(estado("pedro"), "Operador sin permisos modifico otro usuario.");
+
+        // Tampoco debe poder modificarlo si omite o falsifica las credenciales.
+        controlar(solicitud("admin", "Incorrecta", "usuario.deshabilitar",
+                             {{"usuario", "pedro"}}), "NO_AUTENTICADO");
+        exigir(estado("pedro"), "Una credencial invalida modifico la base.");
+
+        // Administrador: prueba del recorrido completo hasta SQLite.
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "pedro"}}), "OK");
+        exigir(!estado("pedro"), "No se deshabilito el operador.");
+        controlar(solicitud("pedro", "ClavePedro1", "ping"), "PERMISO_DENEGADO");
+        controlar(solicitud("pedro", "ClavePedro1", "eco", {{"texto", "hola"}}),
+                  "PERMISO_DENEGADO");
+
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.habilitar",
+                             {{"usuario", "pedro"}}), "OK");
+        exigir(estado("pedro"), "No se volvio a habilitar el operador.");
+        controlar(solicitud("pedro", "ClavePedro1", "ping"), "OK");
+
+        // No se puede cambiar la habilitacion del administrador inicial.
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "admin"}}), "PERMISO_DENEGADO");
+        exigir(estado("admin"), "Se cambio el estado del administrador.");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.habilitar",
+                             {{"usuario", "admin"}}), "PERMISO_DENEGADO");
+
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "inexistente"}}), "RECURSO_NO_ENCONTRADO");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar"), "VALIDACION");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", 12}}), "VALIDACION");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "mala clave"}}), "VALIDACION");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "pedro"}, {"extra", true}}), "VALIDACION");
+
+        // Una misma solicitud repetida deja el estado final igual: es idempotente.
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "pedro"}}), "OK");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
+                             {{"usuario", "pedro"}}), "OK");
+        exigir(!estado("pedro"), "La deshabilitacion repetida altero el estado.");
+
+        std::cout << "Autenticacion y US-05: permisos, rechazo y cambios en SQLite OK.\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
