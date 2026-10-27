@@ -1,4 +1,4 @@
-"""Transporte XML-RPC y servicios de prueba, sin interfaz de consola."""
+"""Transporte XML-RPC y servicios del cliente, sin interfaz de consola."""
 
 import math
 from http.client import HTTPException
@@ -45,14 +45,12 @@ class ClienteXmlRpc:
         if (puerto == 0 or type(timeout) not in (int, float)
                 or not math.isfinite(timeout) or timeout <= 0):
             raise ValueError("Puerto y timeout deben ser validos; timeout positivo.")
-
         self.url = url
         self.timeout = timeout
 
     def enviar(self, solicitud: MensajeRPC) -> MensajeRPC:
         if not isinstance(solicitud, MensajeRPC) or solicitud.tipo != "solicitud":
             raise MensajeInvalido("Solo se pueden enviar objetos MensajeRPC de solicitud.")
-
         try:
             with ServerProxy(
                 self.url,
@@ -72,7 +70,6 @@ class ClienteXmlRpc:
             raise ErrorComunicacion(
                 f"No se obtuvo una respuesta valida desde {self.url}: {error}"
             ) from error
-
         if (respuesta.tipo != "respuesta" or respuesta.id != solicitud.id
                 or respuesta.operacion != solicitud.operacion):
             raise ErrorComunicacion("La respuesta no corresponde a la solicitud enviada.")
@@ -80,15 +77,25 @@ class ClienteXmlRpc:
 
 
 class ServiciosPrueba:
-    """Operaciones de prueba, independientes del menu de consola."""
+    """Solicitudes autenticadas, independientes de la CLI."""
 
-    def __init__(self, cliente: ClienteXmlRpc):
+    def __init__(self, cliente: ClienteXmlRpc, usuario: str, clave: str):
         self.cliente = cliente
+        self._credenciales = {"usuario": usuario, "clave": clave}
+
+    def _enviar(self, operacion: str, parametros: dict | None = None) -> MensajeRPC:
+        datos = {} if parametros is None else dict(parametros)
+        datos["credenciales"] = dict(self._credenciales)
+        return self.cliente.enviar(MensajeRPC.solicitud(operacion, datos))
 
     def ping(self) -> MensajeRPC:
-        return self.cliente.enviar(MensajeRPC.solicitud("ping"))
+        return self._enviar("ping")
 
     def eco(self, texto: str) -> MensajeRPC:
-        return self.cliente.enviar(
-            MensajeRPC.solicitud("eco", {"texto": texto})
-        )
+        return self._enviar("eco", {"texto": texto})
+
+    def habilitar_operador(self, usuario: str) -> MensajeRPC:
+        return self._enviar("usuario.habilitar", {"usuario": usuario})
+
+    def deshabilitar_operador(self, usuario: str) -> MensajeRPC:
+        return self._enviar("usuario.deshabilitar", {"usuario": usuario})

@@ -3,6 +3,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import os
+import sqlite3
+from contextlib import closing
 import socket
 import subprocess
 import sys
@@ -21,6 +23,14 @@ SERVIDOR = ROOT / "server" / "build" / (
     "robot_server.exe" if os.name == "nt" else "robot_server")
 
 
+CREDENCIALES = {"usuario": "operador", "clave": "ClaveOperador1"}
+ADMIN_CREDENCIALES = {"usuario": "admin", "clave": "ClaveAdmin1"}
+
+def solicitud(operacion, parametros=None, credenciales=CREDENCIALES):
+    return MensajeRPC.solicitud(
+        operacion, {**(parametros or {}), "credenciales": credenciales}
+    )
+
 class IntegracionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -30,14 +40,24 @@ class IntegracionTests(unittest.TestCase):
             cls.puerto = reserva.getsockname()[1]
 
         cls.url = f"http://127.0.0.1:{cls.puerto}/RPC2"
+        cls.temporal = tempfile.TemporaryDirectory(prefix="poo_rpc_auth_")
+        cls.addClassCleanup(cls.temporal.cleanup)
+        cls.base = Path(cls.temporal.name) / "usuarios.sqlite"
+        herramienta = ROOT / "server/build" / ("usuarios_admin.exe" if os.name == "nt" else "usuarios_admin")
+        for accion, datos in (
+            ("inicializar", "admin\nClaveAdmin1\nClaveAdmin1\n"),
+            ("agregar", "admin\nClaveAdmin1\noperador\nClaveOperador1\nClaveOperador1\n"),
+        ):
+            subprocess.run([str(herramienta), accion, "--db", str(cls.base)],
+                           input=datos, text=True, capture_output=True, check=True, timeout=15)
         cls.salida = tempfile.TemporaryFile(mode="w+")
         cls.proceso = subprocess.Popen(
-            [str(SERVIDOR), "--port", str(cls.puerto)],
+            [str(SERVIDOR), "--port", str(cls.puerto), "--db", str(cls.base)],
             stdout=cls.salida, stderr=subprocess.STDOUT,
         )
         cls.addClassCleanup(cls.cerrar)
         cls.cliente = ClienteXmlRpc(cls.url, timeout=1)
-        cls.servicios = ServiciosPrueba(cls.cliente)
+        cls.servicios = ServiciosPrueba(cls.cliente, **CREDENCIALES)
 
         limite = time.monotonic() + 5
         while time.monotonic() < limite:
@@ -79,7 +99,7 @@ class IntegracionTests(unittest.TestCase):
         self.assertEqual(self.servicios.eco("").resultado["texto"], "")
 
     def test_operacion_desconocida_es_error_de_aplicacion(self):
-        respuesta = self.cliente.enviar(MensajeRPC.solicitud("volar"))
+        respuesta = self.cliente.enviar(solicitud("mover"))
         self.assertEqual(respuesta.codigo, "OPERACION_NO_SOPORTADA")
         self.assertIn("mensaje", respuesta.resultado)
 
@@ -94,7 +114,7 @@ class IntegracionTests(unittest.TestCase):
         ):
             with self.subTest(operacion=operacion, parametros=parametros):
                 respuesta = self.cliente.enviar(
-                    MensajeRPC.solicitud(operacion, parametros)
+                    solicitud(operacion, parametros)
                 )
                 self.assertEqual(respuesta.codigo, "VALIDACION")
                 self.assertIn("mensaje", respuesta.resultado)
@@ -107,13 +127,13 @@ class IntegracionTests(unittest.TestCase):
         ):
             with self.subTest(operacion=operacion):
                 respuesta = self.cliente.enviar(
-                    MensajeRPC.solicitud(operacion, parametros)
+                    solicitud(operacion, parametros)
                 )
                 self.assertEqual(respuesta.codigo, "ESTADO_INVALIDO")
                 self.assertIn("mensaje", respuesta.resultado)
 
     def test_estado_desconectado_informa_datos_no_disponibles(self):
-        respuesta = self.cliente.enviar(MensajeRPC.solicitud("estado"))
+        respuesta = self.cliente.enviar(solicitud("estado"))
         self.assertEqual(respuesta.codigo, "OK")
         self.assertFalse(respuesta.resultado["conectado"])
         self.assertFalse(respuesta.resultado["posicion"]["disponible"])
@@ -123,25 +143,48 @@ class IntegracionTests(unittest.TestCase):
             self.assertIn("mensaje", dato)
 
     def test_ayuda_y_desconexion_no_requieren_robot(self):
-        ayuda = self.cliente.enviar(MensajeRPC.solicitud("ayuda"))
+        ayuda = self.cliente.enviar(solicitud("ayuda"))
         self.assertEqual(ayuda.codigo, "OK")
         self.assertIn("M17", ayuda.resultado["comandos"])
         self.assertIn("M18", ayuda.resultado["comandos"])
         self.assertNotIn("G0", ayuda.resultado["comandos"])
         self.assertIn("no hay limites", ayuda.resultado["comandos"].lower())
-        desconexion = self.cliente.enviar(MensajeRPC.solicitud("desconectar"))
+        desconexion = self.cliente.enviar(
+            solicitud("desconectar", credenciales=ADMIN_CREDENCIALES)
+        )
         self.assertEqual(desconexion.codigo, "OK")
         self.assertFalse(desconexion.resultado["conectado"])
 
     def test_conexion_rechaza_puerto_inexistente(self):
         respuesta = self.cliente.enviar(
-            MensajeRPC.solicitud(
-                "conectar", {"puerto": "puerto-inexistente"}
+            solicitud(
+                "conectar", {"puerto": "puerto-inexistente"},
+                credenciales=ADMIN_CREDENCIALES
             )
         )
         self.assertEqual(respuesta.codigo, "ERROR_CONEXION")
         self.assertFalse(respuesta.resultado["conectado"])
         self.assertIn("mensaje", respuesta.resultado)
+
+    def test_solo_administrador_puede_conectar_o_desconectar(self):
+        operador_conectar = self.cliente.enviar(
+            solicitud(
+                "conectar", {"puerto": "puerto-inexistente"},
+                credenciales=CREDENCIALES
+            )
+        )
+        self.assertEqual(operador_conectar.codigo, "PERMISO_DENEGADO")
+
+        operador_desconectar = self.cliente.enviar(
+            solicitud("desconectar", credenciales=CREDENCIALES)
+        )
+        self.assertEqual(operador_desconectar.codigo, "PERMISO_DENEGADO")
+
+        admin_desconectar = self.cliente.enviar(
+            solicitud("desconectar", credenciales=ADMIN_CREDENCIALES)
+        )
+        self.assertEqual(admin_desconectar.codigo, "OK")
+        self.assertFalse(admin_desconectar.resultado["conectado"])
 
     def test_argumentos_xmlrpc_invalidos_y_recuperacion(self):
         for argumentos in ((), ("texto",), ({}, {})):
@@ -151,7 +194,7 @@ class IntegracionTests(unittest.TestCase):
         self.assertEqual(self.servicios.ping().codigo, "OK")
 
     def test_mensajes_invalidos_son_fault(self):
-        base = MensajeRPC.solicitud("eco", {"texto": "OK"}).serializar()
+        base = solicitud("eco", {"texto": "OK"}).serializar()
         invalidos = [
             base | {"id": ""},
             base | {"tipo": "respuesta", "codigo": "OK"},
@@ -178,7 +221,7 @@ class IntegracionTests(unittest.TestCase):
 
     def test_puerto_ocupado(self):
         resultado = subprocess.run(
-            [str(SERVIDOR), "--port", str(self.puerto)],
+            [str(SERVIDOR), "--port", str(self.puerto), "--db", str(self.base)],
             capture_output=True, text=True, timeout=3,
         )
         self.assertNotEqual(resultado.returncode, 0)
@@ -191,7 +234,7 @@ class IntegracionTests(unittest.TestCase):
 
     def test_clientes_concurrentes_no_mezclan_respuestas(self):
         def enviar(indice):
-            servicio = ServiciosPrueba(ClienteXmlRpc(self.url, timeout=5))
+            servicio = ServiciosPrueba(ClienteXmlRpc(self.url, timeout=5), **CREDENCIALES)
             return servicio.eco(f"cliente-{indice}").resultado["texto"]
         with ThreadPoolExecutor(max_workers=4) as pool:
             resultados = list(pool.map(enviar, range(12)))
@@ -211,7 +254,7 @@ class IntegracionTests(unittest.TestCase):
             reserva.bind(("127.0.0.1", 0))
             url = f"http://127.0.0.1:{reserva.getsockname()[1]}/RPC2"
             with self.assertRaises(ErrorComunicacion):
-                ServiciosPrueba(ClienteXmlRpc(url, timeout=0.2)).ping()
+                ServiciosPrueba(ClienteXmlRpc(url, timeout=0.2), **CREDENCIALES).ping()
 
     def test_timeout_sin_reintento(self):
         with socket.socket() as listener:
@@ -230,17 +273,43 @@ class IntegracionTests(unittest.TestCase):
             inicio = time.monotonic()
             try:
                 with self.assertRaises(ErrorComunicacion):
-                    ServiciosPrueba(ClienteXmlRpc(url, timeout=0.15)).ping()
+                    ServiciosPrueba(ClienteXmlRpc(url, timeout=0.15), **CREDENCIALES).ping()
                 self.assertLess(time.monotonic() - inicio, 1.5)
             finally:
                 terminado.set()
                 hilo.join(timeout=3)
 
+    def test_rechazos_de_autenticacion(self):
+        for credenciales, codigo in (
+            ({"usuario": "operador", "clave": "Incorrecta"}, "NO_AUTENTICADO"),
+            ({"usuario": "nadie", "clave": "Incorrecta"}, "NO_AUTENTICADO"),
+            ({"usuario": 5, "clave": "Incorrecta"}, "VALIDACION"),
+        ):
+            respuesta = self.cliente.enviar(MensajeRPC.solicitud("ping", {"credenciales": credenciales}))
+            self.assertEqual(respuesta.codigo, codigo)
+        self.assertEqual(self.cliente.enviar(MensajeRPC.solicitud("ping")).codigo, "NO_AUTENTICADO")
+
+    def test_cuenta_deshabilitada_entre_peticiones(self):
+        self.assertEqual(self.servicios.ping().codigo, "OK")
+        try:
+            with closing(sqlite3.connect(self.base)) as db:
+                with db:
+                    db.execute("UPDATE usuarios SET habilitado=0 WHERE nombre='operador'")
+            self.assertEqual(self.servicios.ping().codigo, "PERMISO_DENEGADO")
+        finally:
+            with closing(sqlite3.connect(self.base)) as db:
+                with db:
+                    db.execute("UPDATE usuarios SET habilitado=1 WHERE nombre='operador'")
+        self.assertEqual(self.servicios.ping().codigo, "OK")
+
     def test_cli_real(self):
         resultado = subprocess.run(
-            [sys.executable, "-m", "robot_client", "--url", self.url,
-             "eco", "Hola desde CLI"],
-            cwd=ROOT / "client", capture_output=True, text=True, timeout=5,
+            [sys.executable, "-c",
+             "import sys; import robot_client.cli as c; "
+             "c.getpass=lambda _:sys.stdin.readline().rstrip('\\n'); sys.exit(c.main())",
+             "--url", self.url, "eco", "Hola desde CLI"],
+            cwd=ROOT / "client", input="operador\nClaveOperador1\n",
+            capture_output=True, text=True, timeout=5,
         )
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
         self.assertIn("[OK] Hola desde CLI", resultado.stdout)

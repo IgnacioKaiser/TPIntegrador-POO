@@ -11,7 +11,8 @@ private:
 public:
     explicit ServicioRobot(Robot& robot) : robot_(robot) {}
 
-    MensajeRPC atender(const MensajeRPC& solicitud) const;
+    virtual ~ServicioRobot() = default;
+    virtual MensajeRPC atender(const MensajeRPC& solicitud) const;
 };
 
 } // namespace robotrpc

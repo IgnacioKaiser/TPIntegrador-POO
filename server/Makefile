@@ -25,6 +25,10 @@ endif
 
 RPC_SOURCES := $(wildcard xmlrpc/XmlRpc*.cpp)
 LOG_SOURCES := $(wildcard src/tp2_logger/*.cpp)
+USER_OBJECTS := build/src/usuarios/repositorio_usuarios.o
+USER_LIBS := -lsqlite3 -lsodium
+USER_TOOL := build/usuarios_admin$(EXE)
+USER_TEST := build/test_usuarios$(EXE)
 APP_SOURCES := $(wildcard src/*.cpp) $(wildcard src/domain/*.cpp)
 RPC_OBJECTS := $(patsubst %.cpp,build/%.o,$(RPC_SOURCES))
 LOG_OBJECTS := $(patsubst %.cpp,build/%.o,$(LOG_SOURCES))
@@ -34,18 +38,22 @@ RPC_LIB := build/libxmlrpcpp.a
 LOG_LIB := build/libtp2_logger.a
 SERVER := build/robot_server$(EXE)
 DOMAIN_TEST := build/test_domain$(EXE)
-DEPS := $(RPC_OBJECTS:.o=.d) $(LOG_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) build/tests/test_domain.d
+USER_DEPS := build/src/usuarios/autenticador.d build/src/usuarios/servicio_protegido.d \
+	build/tests/test_autenticacion.d $(USER_OBJECTS:.o=.d) \
+	build/tools/usuarios_admin.d build/tests/test_usuarios.d
+DEPS := $(RPC_OBJECTS:.o=.d) $(LOG_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) \
+	build/tests/test_domain.d $(USER_DEPS)
 
-.PHONY: all libraries examples test test-unit clean
-all: $(SERVER) libraries
+.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion usuarios clean
+all: $(SERVER) libraries $(USER_TOOL)
 libraries: $(RPC_LIB) $(LOG_LIB)
 
 $(RPC_LIB): $(RPC_OBJECTS)
 	$(AR) rcs $@ $^
 $(LOG_LIB): $(LOG_OBJECTS)
 	$(AR) rcs $@ $^
-$(SERVER): $(APP_OBJECTS) $(RPC_LIB)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
+$(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS) $(USER_LIBS)
 build/%.o: %.cpp
 	$(crear_directorio)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
@@ -60,8 +68,19 @@ build/examples/%$(EXE): xmlrpc/examples/%.cpp $(RPC_LIB)
 test-unit: $(DOMAIN_TEST)
 	$(ejecutar_prueba)
 	$(prueba_python) -m unittest discover -s ../client/tests -v
-test: all test-unit
+test: all test-unit test-usuarios test-autenticacion
 	$(prueba_python) -m unittest discover -s tests -p "test_integration.py" -v
+usuarios: $(USER_TOOL)
+$(USER_TOOL): build/tools/usuarios_admin.o $(USER_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(USER_LIBS)
+$(USER_TEST): build/tests/test_usuarios.o $(USER_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(USER_LIBS)
+test-usuarios: $(USER_TOOL) $(USER_TEST)
+	$(prueba_python) tests/ejecutar_usuarios.py
+build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(USER_LIBS)
+test-autenticacion: build/test_autenticacion$(EXE)
+	$(prueba_python) tests/ejecutar_autenticacion.py
 clean:
 	$(limpiar)
 -include $(DEPS)

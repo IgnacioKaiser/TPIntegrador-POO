@@ -6,3 +6,7 @@ __pycache__/
 *.o
 *.a
 *.s
+
+# Base real de usuarios y auxiliares de SQLite
+/data/db/*.sqlite
+/data/db/*.sqlite-*

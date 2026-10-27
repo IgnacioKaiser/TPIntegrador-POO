@@ -6,6 +6,7 @@ Servidor C++ con XmlRpc++ del profesor, cliente Python por consola y firmware or
 
 - `server/xmlrpc/`: biblioteca XmlRpc++ original, licencia y ejemplos, separados del código propio.
 - `server/include/robotrpc/` y `server/src/`: clases de mensajes, servicio y servidor.
+- `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, con adaptacion de fecha/hora para Windows. Se compilan pero todavía no se utilizan para registrar eventos.
 - `server/include/domain/Robot.h` y `server/src/domain/Robot.cpp`: conexión serie multiplataforma y comandos enviados al Arduino.
 - `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, sin modificar. Se compilan pero todavía no se utilizan para registrar eventos.
 - `server/examples/tp2_logger/`: main y datos de ejemplo originales del logger.
@@ -55,7 +56,7 @@ Ver `docs/COMPATIBILIDAD_WINDOWS.md` para alcance y cambios de portabilidad.
 
 Descomprimir y abrir `TP_integrador_real` en VS Code. Detener con Ctrl+C cualquier servidor anterior que use el puerto 8080.
 
-Se requieren build-essential y Python 3.10 o posterior. Si ya están instalados, no hay que instalar nada más. No se utiliza libxmlrpc-c++8-dev ni se requieren paquetes pip.
+Se requieren build-essential, Python 3.10 o posterior, libsqlite3-dev y libsodium-dev. No se utiliza libxmlrpc-c++8-dev ni se requieren paquetes pip.
 
 Terminal 1, desde la raíz del proyecto:
 
@@ -93,6 +94,14 @@ También se puede ejecutar `make test` estando dentro de server. `make -C server
 
 El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, y el servicio conserva el ID de la solicitud en su respuesta. `ServicioRobot` delega las operaciones serie a una instancia de `Robot` compartida por el servidor. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. No hay todavía autenticación ni SQLite; por lo tanto, la autorización por roles para conectar y desconectar queda pendiente. Para usar el robot, conectarlo con `conectar` (opcionalmente indicando `puerto`) antes de invocar `activar_motores` o `desactivar_motores`. `estado` informa desconexión y los datos no disponibles sin consultar el puerto. La interfaz actual no expone comandos de movimiento. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado y solicitar comandos de motores. `estado` indica expresamente los datos que el firmware no informa. La interfaz del servidor no expone comandos de movimiento. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
 
 El firmware se conserva como recurso y no se compila con el Makefile del servidor. Los warnings de parámetros no utilizados provienen del código original de XmlRpc++.
+
+## US-04: usuarios persistentes
+
+Se agrega el modulo de usuarios SQLite y la herramienta local usuarios_admin. Requieren SQLite y libsodium para compilar. Ver [US-04](docs/backlog/US-04.md) para instalacion, comandos, decisiones y pruebas. La autenticacion de peticiones se integra en US-03; ver su documentacion.
+
+## US-03: autenticacion de solicitudes
+
+El servidor utiliza la base preparada en US-04 y exige un administrador inicial. Se conserva esa base: no reinicializarla. Ejecutar desde la raiz `server/build/robot_server` (Windows: `.\server\build\robot_server.exe`). Se puede indicar `--db ruta` para elegir otra base. Cada ejecucion del cliente pide usuario y clave; ping y eco ya requieren autenticacion. Ver [US-03](docs/backlog/US-03.md) para cambios, explicaciones y pruebas.

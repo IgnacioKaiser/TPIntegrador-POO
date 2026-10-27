@@ -82,10 +82,10 @@ class MensajeTests(unittest.TestCase):
                 self.solicitud = solicitud
                 return MensajeRPC.respuesta_a(solicitud, {"texto": "OK"})
         cliente = ClienteFalso()
-        ServiciosPrueba(cliente).eco("Hola")
-        self.assertEqual(cliente.solicitud.parametros, {"texto": "Hola"})
-        ServiciosPrueba(cliente).ping()
-        self.assertEqual(cliente.solicitud.parametros, {})
+        ServiciosPrueba(cliente, "operador", "ClavePrueba1").eco("Hola")
+        self.assertEqual(cliente.solicitud.parametros, {"texto": "Hola", "credenciales": {"usuario": "operador", "clave": "ClavePrueba1"}})
+        ServiciosPrueba(cliente, "operador", "ClavePrueba1").ping()
+        self.assertEqual(cliente.solicitud.parametros, {"credenciales": {"usuario": "operador", "clave": "ClavePrueba1"}})
 
     def test_cliente_verifica_correlacion_de_respuesta(self):
         solicitud = MensajeRPC.solicitud("ping")

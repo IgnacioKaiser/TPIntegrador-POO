@@ -183,6 +183,13 @@ no puede abrir o configurar el puerto. `OK` en comandos al Arduino se devuelve
 al recibir la línea de confirmación `OK` del firmware; un timeout o una
 respuesta incompleta se informa como `ERROR_INTERNO`.
 
+Todas las operaciones requieren credenciales válidas (`parametros.credenciales`
+con `usuario` y `clave` de tipo `string`). El servidor verifica la cuenta y
+su estado en cada solicitud y elimina las credenciales antes de delegar el
+comando. Solo el rol `ADMINISTRADOR` puede conectar o desconectar; los usuarios
+autenticados y habilitados pueden consultar el estado y solicitar operaciones
+de motores.
+
 No se expone movimiento G-code desde este conjunto de operaciones. La ayuda
 no anuncia comandos que la interfaz no implemente; tampoco se definen límites
 de coordenadas.
@@ -192,12 +199,10 @@ texto terminadas en `\r\n`. El servidor elimina los saltos de línea de la
 respuesta agregada. La conexión espera el reinicio del Arduino y descarta el
 contenido inicial del puerto antes de enviar comandos.
 
-El servidor sigue escuchando únicamente en `127.0.0.1`. La autorización por
-roles está pendiente porque el proyecto aún no tiene autenticación, usuarios
-ni sesiones. En particular, el cliente no puede otorgarse permisos declarando
-un rol en los parámetros. Hasta implementar identidad confiable y permisos,
-`conectar` y `desconectar` no cumplen el requisito de acceso exclusivo para
-administradores; no se debe exponer el servicio a una red no confiable.
+El servidor sigue escuchando únicamente en `127.0.0.1`. Los roles provienen
+del repositorio SQLite; el cliente no puede otorgarse permisos declarando un
+rol en los parámetros. La clave viaja por HTTP sin cifrado, por lo que no se
+debe exponer el servicio a una red no confiable.
 
 ## 11. Responsabilidades de cada componente
 
@@ -210,7 +215,7 @@ administradores; no se debe exponer el servicio a una red no confiable.
 ## 12. Seguridad y registro
 
 - Se validan los tipos, rangos y permisos en el servidor, aunque el cliente haya realizado comprobaciones previas.
-- Si se incorporan credenciales o tokens, deberán definirse como parámetros con nombre y tipo; no deberán registrarse sus valores en logs.
+- Las credenciales se incluyen como parametros.credenciales, estructura con usuario y clave de tipo string. Se validan en cada peticion de aplicacion. No deben registrarse en logs ni devolverse en respuestas.
 - Los errores no deben exponer contraseñas ni información interna innecesaria.
 - El uso inicial de HTTP/XML-RPC en un entorno de pruebas local no debe interpretarse como protección suficiente para una red no confiable.
 
@@ -219,3 +224,9 @@ administradores; no se debe exponer el servicio a una red no confiable.
 El cliente y el servidor deben respetar los mismos nombres, tipos y significados. Si se modifica la estructura general o la definición de una operación, se actualizarán este documento y las implementaciones y pruebas correspondientes de ambos lados.
 
 La biblioteca XML-RPC se reutilizará para transportar y representar los valores; no se implementará manualmente un parser XML adicional para estos mensajes.
+
+## Autenticacion incorporada en US-03
+
+Todas las operaciones de aplicacion actuales (ping y eco) requieren parametros.credenciales con exactamente usuario y clave, ambos string. ping no recibe otros parametros; eco recibe ademas texto. La omision de credenciales devuelve NO_AUTENTICADO, su formato incorrecto VALIDACION, una clave incorrecta o usuario inexistente NO_AUTENTICADO y una cuenta deshabilitada con clave correcta PERMISO_DENEGADO. No se agregan sesiones. Los system.* de XmlRpc++ son metadatos y no ofrecen acceso directo a los servicios de aplicacion.
+
+Ver docs/backlog/US-03.md para decisiones, recorrido y pruebas.
