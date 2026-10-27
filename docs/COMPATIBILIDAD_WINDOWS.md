@@ -2,13 +2,16 @@
 
 ## Alcance
 
-Adaptacion sobre master 8bb7719. Mantiene ping, eco, el contrato de seis campos y la escucha local en 127.0.0.1. La clase `Robot` agrega control serie multiplataforma del Arduino, sin agregar autenticacion.
+Adaptacion inicial sobre master 8bb7719. Mantiene ping, eco, el contrato de seis campos
+y la escucha local en 127.0.0.1. La clase `Robot` agrega control serie multiplataforma;
+la autenticacion por solicitud y los permisos ya se implementan en ServicioProtegido.
+US-23 agrega usuario.actual para que el menu use el rol autenticado.
 
 ## Herramientas en Windows
 
 - MinGW-w64 de MSYS2 UCRT64: g++, ar y mingw32-make en PATH.
 - Python 3.10 o posterior; sin dependencias pip.
-- PowerShell para los comandos del usuario. El Makefile usa cmd.exe para sus recetas en Windows.
+- PowerShell para los comandos del usuario. El Makefile usa cmd.exe en Windows o bash si se ejecuta desde MSYS2.
 - No requiere CMake.
 
 Desde la raiz:

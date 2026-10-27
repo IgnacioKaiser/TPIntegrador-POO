@@ -16,7 +16,10 @@ Se probaron ping, eco con UTF-8 y escape XML, contenido vacío y límite de byte
 
 Los warnings de parámetros no utilizados provienen de las fuentes originales; no se modificaron para silenciarlos. Se compararon los archivos incorporados con los ZIP proporcionados (ver ORIGENES.md).
 
-Esta verificación cubre comunicación local. No se probaron dos computadoras, Windows, uso efectivo del logger, conexión serie ni ejecución del simulador. Todavía no hay autenticación ni control del robot.
+Esta verificación histórica cubre comunicación local. En esa versión no se probaron
+dos computadoras, Windows, uso efectivo del logger, conexión serie ni ejecución del
+simulador. La autenticación por solicitud ya está implementada en US-03 y el control
+serie se incorporó después; ver las actualizaciones y ESTADO_PROYECTO.md.
 
 ## Actualización: incorporación de la clase Robot (27 de octubre de 2026)
 
@@ -31,4 +34,28 @@ Se conectó `ServicioRobot` al servidor, se agregó `Robot.cpp` a la compilació
 
 Las pruebas cubren la validación de parámetros, el estado explícito cuando el robot está desconectado, los datos no disponibles, la ayuda sin comandos de movimiento y el rechazo de un puerto serie inexistente. No se verificó la ejecución de movimientos sobre el robot.
 
-Se verificó físicamente el 27 de octubre de 2026 con el Arduino en `COM5`: conectar, consultar `M114` y desconectar respondieron `OK`. El firmware informó modo absoluto, motores desactivados y ventilador desactivado; la posición se devolvió explícitamente como no disponible porque la respuesta no contenía `CURRENT POSITION`. No se enviaron comandos de activación de motores ni de movimiento. La autorización por rol sigue pendiente hasta incorporar autenticación.
+Según el registro incorporado desde ConState, se verificó físicamente el 27 de octubre
+de 2026 con el Arduino en `COM5`: conectar, consultar `M114` y desconectar respondieron
+`OK`. El firmware informó modo absoluto, motores desactivados y ventilador desactivado;
+la posición se devolvió como no disponible por no contener `CURRENT POSITION`.
+No se enviaron comandos de activación de motores ni de movimiento. No se repitió esa
+prueba física en US-23. La autenticación y autorización por rol ya están implementadas
+en ServicioProtegido; US-23 agrega la consulta de identidad para el menú.
+
+## Integracion de US-10 a US-13 con US-23 (27 de octubre de 2026)
+
+En Windows con MSYS2 UCRT64 y Python 3.14 se verificaron los cambios combinados:
+
+| Grupo | Resultado |
+| --- | --- |
+| Servidor y herramientas C++ (`make -C server all`) | Compilacion correcta. |
+| Dominio C++ | `test_domain.exe`: comprobaciones correctas. |
+| Cliente Python | 33 pruebas correctas, incluyendo menu por rol y control manual. |
+| Usuarios y autenticacion C++ | Pruebas correctas con bases SQLite temporales. |
+| Integracion XML-RPC | 27 pruebas correctas contra el servidor C++ real y bases temporales. |
+
+Las pruebas validan la consulta de identidad, permisos administrativos, ambos modos,
+las operaciones manuales y respuestas cuando el robot esta desconectado. No se
+envio un movimiento al Arduino: `M114` no entrega la posicion que requiere la
+validacion segura de `G1`. La prueba previa en COM5 corresponde al firmware de
+simulacion y no demuestra movimiento fisico.

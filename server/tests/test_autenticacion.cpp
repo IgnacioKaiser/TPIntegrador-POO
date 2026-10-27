@@ -43,6 +43,28 @@ int main(int argc, char* argv[]) {
         controlar(MensajeRPC::solicitud("mal", "ping", {{"credenciales", "mal"}}),
                   "VALIDACION");
 
+        auto verificarActual = [&](const std::string& nombre, const std::string& clave,
+                                   const std::string& rol) {
+            const auto s = solicitud(nombre, clave, "usuario.actual");
+            controlar(s, "OK");
+            const auto datos = protegido.atender(s).resultado();
+            exigir(datos.size() == 2, "La identidad solo debe devolver usuario y rol.");
+            exigir(datos.at("usuario").obtener<std::string>() == nombre,
+                   "Se devolvio otra cuenta.");
+            exigir(datos.at("rol").obtener<std::string>() == rol, "Rol incorrecto.");
+        };
+        verificarActual("admin", "ClaveAdmin1", "ADMINISTRADOR");
+        verificarActual("operador", "ClaveOperador1", "OPERADOR");
+        controlar(solicitud("operador", "Incorrecta", "usuario.actual"), "NO_AUTENTICADO");
+        controlar(solicitud("nadie", "Incorrecta", "usuario.actual"), "NO_AUTENTICADO");
+        controlar(MensajeRPC::solicitud("sin-cred", "usuario.actual"), "NO_AUTENTICADO");
+        controlar(MensajeRPC::solicitud("mal", "usuario.actual", {{"credenciales", "mal"}}),
+                  "VALIDACION");
+        controlar(solicitud("operador", "ClaveOperador1", "usuario.actual",
+                             {{"usuario", "admin"}}), "VALIDACION");
+        controlar(solicitud("admin", "ClaveAdmin1", "usuario.actual",
+                             {{"rol", "ADMINISTRADOR"}}), "VALIDACION");
+
         controlar(solicitud("operador", "ClaveOperador1", "conectar",
                              {{"puerto", "puerto-inexistente"}}),
                   "PERMISO_DENEGADO");
@@ -70,6 +92,7 @@ int main(int argc, char* argv[]) {
         controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
                              {{"usuario", "pedro"}}), "OK");
         exigir(!estado("pedro"), "No se deshabilito el operador.");
+        controlar(solicitud("pedro", "ClavePedro1", "usuario.actual"), "PERMISO_DENEGADO");
         controlar(solicitud("pedro", "ClavePedro1", "ping"), "PERMISO_DENEGADO");
         controlar(solicitud("pedro", "ClavePedro1", "eco", {{"texto", "hola"}}),
                   "PERMISO_DENEGADO");

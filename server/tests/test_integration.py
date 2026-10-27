@@ -91,6 +91,31 @@ class IntegracionTests(unittest.TestCase):
         self.assertEqual(respuesta.parametros, {})
         self.assertIn("pong", respuesta.resultado["mensaje"])
 
+    def test_usuario_actual_devuelve_solo_la_identidad_autenticada(self):
+        for credenciales, rol in ((CREDENCIALES, "OPERADOR"),
+                                  (ADMIN_CREDENCIALES, "ADMINISTRADOR")):
+            with self.subTest(rol=rol):
+                respuesta = ServiciosPrueba(self.cliente, **credenciales).usuario_actual()
+                self.assertEqual(respuesta.codigo, "OK")
+                self.assertEqual(respuesta.resultado,
+                                 {"usuario": credenciales["usuario"], "rol": rol})
+
+    def test_usuario_actual_rechaza_credenciales_y_parametros_invalidos(self):
+        for credenciales, codigo in (({"usuario": "operador", "clave": "Incorrecta"}, "NO_AUTENTICADO"),
+                                     ({"usuario": "nadie", "clave": "Incorrecta"}, "NO_AUTENTICADO"),
+                                     ({"usuario": 5, "clave": "Incorrecta"}, "VALIDACION")):
+            with self.subTest(credenciales=credenciales["usuario"]):
+                respuesta = self.cliente.enviar(solicitud("usuario.actual", credenciales=credenciales))
+                self.assertEqual(respuesta.codigo, codigo)
+                self.assertEqual(set(respuesta.resultado), {"mensaje"})
+        self.assertEqual(self.cliente.enviar(
+            MensajeRPC.solicitud("usuario.actual")).codigo, "NO_AUTENTICADO")
+        for parametros in ({"usuario": "admin"}, {"rol": "ADMINISTRADOR"}, {"extra": True}):
+            with self.subTest(parametros=parametros):
+                respuesta = self.cliente.enviar(solicitud("usuario.actual", parametros))
+                self.assertEqual(respuesta.codigo, "VALIDACION")
+                self.assertEqual(set(respuesta.resultado), {"mensaje"})
+
     def test_eco_utf8_y_escape_xml(self):
         texto = 'Mecatronica: áéíóú ñ <robot X="100"> & pinza\nSegunda linea'
         self.assertEqual(self.servicios.eco(texto).resultado["texto"], texto)
@@ -350,11 +375,38 @@ class IntegracionTests(unittest.TestCase):
                 with db:
                     db.execute("UPDATE usuarios SET habilitado=0 WHERE nombre='operador'")
             self.assertEqual(self.servicios.ping().codigo, "PERMISO_DENEGADO")
+            respuesta = self.servicios.usuario_actual()
+            self.assertEqual(respuesta.codigo, "PERMISO_DENEGADO")
+            self.assertEqual(set(respuesta.resultado), {"mensaje"})
         finally:
             with closing(sqlite3.connect(self.base)) as db:
                 with db:
                     db.execute("UPDATE usuarios SET habilitado=1 WHERE nombre='operador'")
         self.assertEqual(self.servicios.ping().codigo, "OK")
+
+    def test_menu_real_segun_rol_y_rechazo_de_autenticacion(self):
+        for nombre, clave, administrador, retorno in (
+            ("operador", "ClaveOperador1", False, 0),
+            ("admin", "ClaveAdmin1", True, 0),
+            ("operador", "Incorrecta", False, 1),
+        ):
+            with self.subTest(usuario=nombre, retorno=retorno):
+                resultado = subprocess.run(
+                    [sys.executable, "-B", "-c",
+                     "import sys; import robot_client.cli as c; "
+                     "c.getpass=lambda _:sys.stdin.readline().rstrip('\\n'); sys.exit(c.main())",
+                     "--url", self.url], cwd=ROOT / "client",
+                    input=f"{nombre}\n{clave}\n0\n", capture_output=True, text=True, timeout=5)
+                self.assertEqual(resultado.returncode, retorno, resultado.stderr)
+                self.assertNotIn(clave, resultado.stdout + resultado.stderr)
+                self.assertEqual("5. Conectar robot" in resultado.stdout, administrador)
+                self.assertEqual("3. Habilitar operador" in resultado.stdout, administrador)
+                if retorno == 0:
+                    self.assertIn("7. Consultar estado", resultado.stdout)
+                    self.assertIn("10. Ayuda", resultado.stdout)
+                else:
+                    self.assertIn("NO_AUTENTICADO", resultado.stdout)
+                    self.assertNotIn("1. Comprobar", resultado.stdout)
 
     def test_cli_real(self):
         resultado = subprocess.run(
