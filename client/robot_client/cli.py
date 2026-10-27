@@ -40,21 +40,40 @@ class CliCliente:
         print(f"ID: {respuesta.id}")
 
     def ejecutar(self):
+        # Consultar identidad antes del menu. No se deduce el rol por el nombre.
+        identidad = self.servicios.usuario_actual()
+        if identidad.codigo != "OK":
+            self.mostrar(identidad)
+            return 1
+        rol = identidad.resultado.get("rol")
+        usuario = identidad.resultado.get("usuario")
+        if rol not in ("ADMINISTRADOR", "OPERADOR"):
+            raise MensajeInvalido("El servidor no informo un rol reconocido. No se abre el menu.")
+        if not isinstance(usuario, str) or not usuario:
+            raise MensajeInvalido("El servidor no informo el usuario autenticado. No se abre el menu.")
+        administrador = rol == "ADMINISTRADOR"
+        print(f"Usuario autenticado: {usuario} ({rol})")
+
         while True:
             print("\n1. Comprobar conexion (ping)"
-                  "\n2. Enviar texto (eco)"
-                  "\n3. Habilitar operador (solo administrador)"
-                  "\n4. Deshabilitar operador (solo administrador)"
-                  "\n5. Conectar robot (solo administrador)"
-                  "\n6. Desconectar robot (solo administrador)"
-                  "\n7. Consultar estado del robot"
+                  "\n2. Enviar texto (eco)")
+            if administrador:
+                print("3. Habilitar operador (solo administrador)"
+                      "\n4. Deshabilitar operador (solo administrador)"
+                      "\n5. Conectar robot (solo administrador)"
+                      "\n6. Desconectar robot (solo administrador)")
+            print("7. Consultar estado del robot"
                   "\n8. Activar motores"
                   "\n9. Desactivar motores"
                   "\n10. Ayuda del servidor"
                   "\n0. Salir")
             opcion = input("Opcion: ").strip()
             if opcion == "0":
-                return
+                return 0
+            # Ocultar opciones no reemplaza los permisos comprobados por el servidor.
+            if opcion in ("3", "4", "5", "6") and not administrador:
+                print("Opcion no disponible para este perfil.")
+                continue
             try:
                 if opcion == "1":
                     self.mostrar(self.servicios.ping())
@@ -127,8 +146,7 @@ def main(argv=None):
             # Los nombres del comando y del metodo coinciden con el contrato.
             respuesta = getattr(servicios, args.comando)()
         else:
-            cli.ejecutar()
-            return 0
+            return cli.ejecutar()
         cli.mostrar(respuesta)
         return 0 if respuesta.codigo == "OK" else 1
     except (ErrorComunicacion, MensajeInvalido, ValueError) as error:

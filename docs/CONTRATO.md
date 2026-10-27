@@ -120,7 +120,7 @@ Este ejemplo **no implica** que el robot haya alcanzado físicamente el destino:
 | --- | --- |
 | `OK` | Operación completada según la definición de esa operación. |
 | `VALIDACION` | Faltan parámetros, hay tipos incorrectos o valores fuera de rango. |
-| `NO_AUTENTICADO` | La operación requiere una sesión o autenticación válida. |
+| `NO_AUTENTICADO` | Faltan credenciales o no permiten autenticar al usuario. No se usan sesiones. |
 | `PERMISO_DENEGADO` | El usuario no tiene autorización para la operación. |
 | `OPERACION_NO_SOPORTADA` | El servidor no reconoce la operación solicitada. |
 | `ESTADO_INVALIDO` | La operación no puede ejecutarse en el estado actual del sistema. |
@@ -155,13 +155,18 @@ En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de
 
 ## 10. Operaciones implementadas
 
-Todas las operaciones rechazan parámetros desconocidos. `ping`, `desconectar`,
-`estado`, los comandos de motores y `ayuda` no aceptan parámetros.
+Todas las operaciones requieren `parametros.credenciales` y rechazan parámetros
+desconocidos. En la tabla se indican solo los parámetros adicionales a las
+credenciales. `ping`, `usuario.actual`, `desconectar`, `estado`, los comandos
+de motores y `ayuda` no aceptan parámetros adicionales.
 
 | Operación | Parámetros | Resultado en `OK` | Comportamiento |
 | --- | --- | --- | --- |
 | `ping` | Ninguno | `mensaje: string` | Prueba del servidor, no requiere conexión al robot. |
 | `eco` | `texto: string` | `texto: string` | Devuelve el texto recibido. |
+| `usuario.actual` | Ninguno | `usuario: string`, `rol: string` | Devuelve únicamente la identidad autenticada de quien realiza el pedido. |
+| `usuario.habilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Habilita un operador; solo administrador. |
+| `usuario.deshabilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Deshabilita un operador; solo administrador. |
 | `conectar` | `puerto: string` opcional | `mensaje: string` | Abre el puerto a 115200 baudios, 8N1. Por defecto usa `/dev/ttyACM0` en Linux y `COM3` en Windows. |
 | `desconectar` | Ninguno | `mensaje: string` | Cierra la conexión si está abierta; también es válida si ya estaba desconectado. |
 | `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct` | Devuelve el estado de conexión. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
@@ -189,6 +194,21 @@ su estado en cada solicitud y elimina las credenciales antes de delegar el
 comando. Solo el rol `ADMINISTRADOR` puede conectar o desconectar; los usuarios
 autenticados y habilitados pueden consultar el estado y solicitar operaciones
 de motores.
+
+`usuario.actual` reutiliza el `Usuario` obtenido al autenticar la solicitud. `rol`
+es exactamente `ADMINISTRADOR` u `OPERADOR`; `usuario` es el nombre de esa cuenta.
+`OK` confirma la consulta de identidad, no crea una sesión ni garantiza permisos
+para pedidos posteriores. No devuelve contraseñas, hashes ni datos de otras cuentas.
+Un parámetro adicional (incluso `usuario` o `rol`) produce `VALIDACION` después de
+autenticar. Se mantienen `NO_AUTENTICADO` para credenciales ausentes/incorrectas,
+`VALIDACION` para credenciales mal formadas, `PERMISO_DENEGADO` para una cuenta con
+clave correcta pero deshabilitada y `ERROR_INTERNO` ante un fallo del repositorio.
+
+El menú Python consulta `usuario.actual` antes de abrirse. Con `ADMINISTRADOR`
+muestra todas sus opciones actuales; con `OPERADOR` omite conectar, desconectar
+y administración de operadores. Si hay un error o falta un rol reconocido no abre
+el menú. Los comandos directos siguen sujetos a los controles del servidor.
+Las operaciones de usuarios se detallan en `docs/backlog/US-05.md`.
 
 No se expone movimiento G-code desde este conjunto de operaciones. La ayuda
 no anuncia comandos que la interfaz no implemente; tampoco se definen límites
@@ -227,6 +247,6 @@ La biblioteca XML-RPC se reutilizará para transportar y representar los valores
 
 ## Autenticacion incorporada en US-03
 
-Todas las operaciones de aplicacion actuales (ping y eco) requieren parametros.credenciales con exactamente usuario y clave, ambos string. ping no recibe otros parametros; eco recibe ademas texto. La omision de credenciales devuelve NO_AUTENTICADO, su formato incorrecto VALIDACION, una clave incorrecta o usuario inexistente NO_AUTENTICADO y una cuenta deshabilitada con clave correcta PERMISO_DENEGADO. No se agregan sesiones. Los system.* de XmlRpc++ son metadatos y no ofrecen acceso directo a los servicios de aplicacion.
+Todas las operaciones de aplicacion de la seccion 10 requieren parametros.credenciales con exactamente usuario y clave, ambos string. La omision de credenciales devuelve NO_AUTENTICADO, su formato incorrecto VALIDACION, una clave incorrecta o usuario inexistente NO_AUTENTICADO y una cuenta deshabilitada con clave correcta PERMISO_DENEGADO. No se agregan sesiones. Los system.* de XmlRpc++ son metadatos y no ofrecen acceso directo a los servicios de aplicacion.
 
 Ver docs/backlog/US-03.md para decisiones, recorrido y pruebas.

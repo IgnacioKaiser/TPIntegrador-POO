@@ -40,6 +40,17 @@ MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
     parametros.erase("credenciales");
     const auto limpia = MensajeRPC::solicitud(solicitud.id(), solicitud.operacion(), parametros);
 
+    if (solicitud.operacion() == "usuario.actual") {
+        if (!parametros.empty())
+            return error(solicitud, "VALIDACION",
+                         "usuario.actual no acepta parametros adicionales.");
+
+        // La identidad proviene de la autenticacion, nunca de datos del cliente.
+        return MensajeRPC::respuestaA(solicitud,
+            {{"usuario", solicitante.nombre},
+             {"rol", solicitante.rol == Rol::ADMINISTRADOR ? "ADMINISTRADOR" : "OPERADOR"}});
+    }
+
     if ((solicitud.operacion() == "conectar" ||
          solicitud.operacion() == "desconectar") &&
         solicitante.rol != Rol::ADMINISTRADOR)

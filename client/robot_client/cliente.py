@@ -94,6 +94,9 @@ class ServiciosPrueba:
     def eco(self, texto: str) -> MensajeRPC:
         return self._enviar("eco", {"texto": texto})
 
+    def usuario_actual(self) -> MensajeRPC:
+        return self._enviar("usuario.actual")
+
     def conectar(self, puerto: str | None = None) -> MensajeRPC:
         # Al omitir puerto, el servidor elige el predeterminado de su sistema.
         parametros = {} if puerto is None else {"puerto": puerto}

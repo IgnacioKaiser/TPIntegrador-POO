@@ -26,6 +26,7 @@ class ServiciosUS23Tests(unittest.TestCase):
                  ("conectar", ("/dev/ttyACM1",), {"puerto": "/dev/ttyACM1"})]
         casos += [(nombre, (), {}) for nombre in
                   ("desconectar", "estado", "activar_motores", "desactivar_motores", "ayuda")]
+        casos.append(("usuario_actual", (), {}))
         for nombre, argumentos, parametros in casos:
             with self.subTest(operacion=nombre, argumentos=argumentos):
                 transporte = Mock()
@@ -34,7 +35,8 @@ class ServiciosUS23Tests(unittest.TestCase):
                 respuesta = getattr(servicios, nombre)(*argumentos)
                 transporte.enviar.assert_called_once()
                 pedido = transporte.enviar.call_args.args[0]
-                self.assertEqual(pedido.operacion, nombre)
+                self.assertEqual(pedido.operacion,
+                                 "usuario.actual" if nombre == "usuario_actual" else nombre)
                 self.assertEqual(pedido.parametros, {
                     **parametros, "credenciales": {
                         "usuario": "operador", "clave": "ClaveFicticia1"}})
@@ -51,11 +53,15 @@ class ServiciosUS23Tests(unittest.TestCase):
 
 
 class CliUS23Tests(unittest.TestCase):
-    def ejecutar_cli(self, argumentos, resultado, codigo="OK", entradas=None):
+    def ejecutar_cli(self, argumentos, resultado, codigo="OK", entradas=None,
+                     identidad=None, codigo_identidad="OK"):
         salida, errores = StringIO(), StringIO()
 
         def responder(campos):
             solicitud = MensajeRPC.deserializar(campos)
+            if solicitud.operacion == "usuario.actual":
+                datos = {"usuario": "operador", "rol": "OPERADOR"} if identidad is None else identidad
+                return MensajeRPC.respuesta_a(solicitud, datos, codigo_identidad).serializar()
             return MensajeRPC.respuesta_a(solicitud, resultado, codigo).serializar()
 
         # Se sustituye la red, pero se recorren CLI, servicios y MensajeRPC reales.
@@ -137,19 +143,53 @@ class CliUS23Tests(unittest.TestCase):
         for puerto in ("", "COM4"):
             with self.subTest(puerto=puerto):
                 _, salida, _, pedidos = self.ejecutar_cli(
-                    [], {}, entradas=["operador", "5", puerto, "6", "7", "8", "9", "10", "0"])
+                    [], {}, entradas=["operador", "5", puerto, "6", "7", "8", "9", "10", "0"],
+                    identidad={"usuario": "operador", "rol": "ADMINISTRADOR"})
                 self.assertIn("Conectar robot (solo administrador)", salida)
                 self.assertIn("Desconectar robot (solo administrador)", salida)
-                self.assertEqual([s.operacion for s in pedidos], ["conectar", "desconectar",
+                self.assertEqual([s.operacion for s in pedidos], ["usuario.actual", "conectar", "desconectar",
                                  "estado", "activar_motores", "desactivar_motores", "ayuda"])
-                self.assertEqual(pedidos[0].parametros.get("puerto"), puerto or None)
+                self.assertEqual(pedidos[1].parametros.get("puerto"), puerto or None)
 
     def test_menu_continua_despues_de_un_rechazo(self):
         _, salida, _, pedidos = self.ejecutar_cli(
             [], {"mensaje": "Solo el administrador puede desconectar."}, "PERMISO_DENEGADO",
-            entradas=["operador", "6", "10", "0"])
+            entradas=["operador", "6", "10", "0"],
+            identidad={"usuario": "operador", "rol": "ADMINISTRADOR"})
         self.assertIn("[PERMISO_DENEGADO] Solo el administrador", salida)
-        self.assertEqual([s.operacion for s in pedidos], ["desconectar", "ayuda"])
+        self.assertEqual([s.operacion for s in pedidos], ["usuario.actual", "desconectar", "ayuda"])
+
+    def test_menu_operador_oculta_y_rechaza_opciones_administrativas(self):
+        # Incluso si se escribe un numero oculto, no se envia esa operacion.
+        retorno, salida, _, pedidos = self.ejecutar_cli(
+            [], {}, entradas=["admin", "3", "4", "5", "6", "1", "2", "hola",
+                              "7", "8", "9", "10", "0"])
+        self.assertEqual(retorno, 0)
+        for texto in ("Habilitar operador", "Deshabilitar operador", "Conectar robot", "Desconectar robot"):
+            self.assertNotIn(texto, salida)
+        self.assertEqual(salida.count("Opcion no disponible"), 4)
+        self.assertEqual([s.operacion for s in pedidos], ["usuario.actual", "ping", "eco",
+                         "estado", "activar_motores", "desactivar_motores", "ayuda"])
+
+    def test_menu_no_abre_si_el_servidor_rechaza_la_identidad(self):
+        for codigo in ("NO_AUTENTICADO", "PERMISO_DENEGADO", "OPERACION_NO_SOPORTADA"):
+            with self.subTest(codigo=codigo):
+                retorno, salida, _, pedidos = self.ejecutar_cli(
+                    [], {}, identidad={"mensaje": "Acceso rechazado"}, codigo_identidad=codigo)
+                self.assertEqual(retorno, 1)
+                self.assertIn(f"[{codigo}] Acceso rechazado", salida)
+                self.assertNotIn("1. Comprobar", salida)
+                self.assertEqual([s.operacion for s in pedidos], ["usuario.actual"])
+
+    def test_menu_no_asume_privilegios_con_identidad_incompleta_o_rol_desconocido(self):
+        for datos in ({"usuario": "admin"}, {"usuario": "admin", "rol": "OTRO"},
+                      {"usuario": "admin", "rol": 5}, {"rol": "ADMINISTRADOR"}):
+            with self.subTest(datos=datos):
+                retorno, salida, errores, pedidos = self.ejecutar_cli([], {}, identidad=datos)
+                self.assertEqual(retorno, 1)
+                self.assertIn("No se abre el menu", errores)
+                self.assertNotIn("1. Comprobar", salida)
+                self.assertEqual(len(pedidos), 1)
 
     def test_fallo_de_comunicacion_no_se_presenta_como_exito(self):
         salida, errores = StringIO(), StringIO()
