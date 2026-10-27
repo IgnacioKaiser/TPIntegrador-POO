@@ -1,6 +1,8 @@
 # Estado del proyecto
 
 Fecha de revision: 27/10/2026. Base revisada en GitHub: cd3d4bc (master).
+Actualizacion local US-23: rama us-23-cliente, base bbfe525; referencia del servidor
+origin/ConState en bebb692f2bc8512b1da15e232682f075d6a9e39f, obtenida con git fetch origin.
 Este documento es una fotografia, no una declaracion permanente. Antes de una nueva tarea, verificar el commit actual y actualizar lo que cambio.
 
 ## Producto
@@ -12,6 +14,15 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - US-04: SQLite para usuarios y roles; credenciales con libsodium. Herramienta usuarios_admin para inicializar, agregar y listar. Pruebas y uso manual verificados por el equipo en Windows.
 - US-03: Autenticador y ServicioProtegido validan cada solicitud. Pruebas originales del dominio (15), cliente Python (10), usuarios, autenticacion e integracion (18 en ese hito) correctas en Windows segun salidas del equipo. No asumir que esos conteos permanecen iguales tras nuevos cambios.
 - US-05: integrado en master mediante PR #1. Agrega usuario.habilitar y usuario.deshabilitar para administradores. Se revisaron codigo y documentacion; en esta revision del 27/10 no se ejecutaron nuevamente sus pruebas.
+- US-23 (avance local, sin commit ni merge): cliente con conectar (puerto opcional),
+  desconectar, estado, activar_motores, desactivar_motores y ayuda, por terminal y menu.
+  Muestra datos anidados, disponibilidad y errores parciales. 26 pruebas del cliente
+  correctas en Windows/Python 3.14.0, con respuestas simuladas. El usuario verifico
+  contra el servidor real ayuda, ping, estado desconectado y rechazo de ambos comandos
+  de motores sin conexion; el menu continua correctamente. Sin verificacion de Arduino.
+  Pendientes: casos administrativos de conectar/desconectar, conexion serie y filtrado
+  por permisos. ConState avanzo a 0add6a5; solo cambia el Makefile respecto de bebb692,
+  sin nuevas operaciones ni cambios necesarios en el cliente. Ver backlog/US-23.md.
 
 ## Arquitectura vigente
 - Cliente: cli.py presenta; cliente.py transporta y construye solicitudes; mensaje.py representa datos.
@@ -22,8 +33,12 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - firmware/arduino/robotArm_v0.62sim contiene el codigo provisto. No equivale a tener el puerto serie conectado.
 
 ## Trabajo paralelo y pendientes
-El usuario informa que un companero trabaja en tareas del robot, posiblemente US-07 a US-13; el alcance exacto no esta confirmado. No tomar los responsables/estados del CSV Jira como confirmacion. Consultar el reparto antes de editar la conexion, el modelo del robot, movimientos y modos.
-En master revisado no se encontro aun implementacion de control serie del robot. Puede existir trabajo local no publicado.
+Reparto confirmado por el usuario: el companero trabaja en US-06 a US-13 solo del
+servidor; este avance trabaja en client/ y sus pruebas. No tomar responsables ni
+estados de Jira como evidencia. ConState publica conexion serie, estado, motores
+y ayuda; se revisaron contrato, servicios y pruebas sin mezclarlos en esta rama.
+La copia local de server/ sigue en la base anterior. Lo publicado no demuestra que
+el companero no tenga otros cambios locales; coordinar antes de editar puntos comunes.
 Pendientes generales: conexion/estado/control del robot; tareas G-Code, propiedad y ejecucion; log e informes; CLI administrativa completa; coordinacion de acceso; entrega y diagramas.
 US-18 (log CSV) y US-15/US-16 (almacenamiento/listado de trayectorias) son opciones para el siguiente trabajo, no asignaciones confirmadas.
 

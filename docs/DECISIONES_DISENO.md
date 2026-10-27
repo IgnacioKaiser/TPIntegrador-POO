@@ -87,3 +87,18 @@ Autenticador comprueba credenciales y estado consultando el repositorio en cada 
 Se conserva ServicioPrueba como objeto separado y se hace virtual su operacion atender para sustituirlo en pruebas por un servicio espia. Esto permite comprobar que no se invoca con credenciales rechazadas, sin inventar movimientos del robot ni agregar contadores al servicio de produccion.
 
 La consola Python usa getpass y conserva las credenciales en memoria; no se agregan argumentos con contrasenas ni archivos de sesion. Cada peticion vuelve a enviarlas. La base existente no cambia de esquema. El servidor exige un administrador habilitado al arrancar. La habilitacion remota sigue fuera de este hito (US-05); las pruebas cambian el estado directamente sobre bases temporales.
+
+## D09. Avance del cliente US-23 sin consulta de permisos (27/10/2026)
+
+Consumir solo las operaciones publicadas en origin/ConState, commit bebb692,
+reutilizando mensajes, transporte y credenciales por solicitud. No cambiar el contrato
+ni inferir roles: esa referencia no ofrece una consulta de identidad o permisos.
+Conectar y desconectar se rotulan como administrativas y se muestra el rechazo
+del servidor. Filtrar el menu queda pendiente de una respuesta autenticada acordada;
+inventar una consulta o confiar en un rol declarado por el cliente seria incorrecto.
+
+Presentar todos los datos devueltos, incluidos los anidados y los parciales de errores.
+Conservar los indicadores disponible para no confundir datos desconocidos con ceros
+o estados inactivos. La confirmacion del firmware no prueba una accion fisica;
+un fallo de comunicacion no habilita reintentos automaticos. Ver docs/backlog/US-23.md
+para cambios, ejemplos, pruebas y limites de este avance.
