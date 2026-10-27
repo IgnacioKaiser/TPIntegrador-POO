@@ -125,6 +125,7 @@ Este ejemplo **no implica** que el robot haya alcanzado físicamente el destino:
 | `OPERACION_NO_SOPORTADA` | El servidor no reconoce la operación solicitada. |
 | `ESTADO_INVALIDO` | La operación no puede ejecutarse en el estado actual del sistema. |
 | `RECURSO_NO_ENCONTRADO` | No existe el recurso solicitado. |
+| `ERROR_CONEXION` | No se pudo abrir o configurar el puerto serie del Arduino. |
 | `ERROR_INTERNO` | Fallo interno al procesar la operación. |
 
 En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de tipo `string` con una explicación legible.
@@ -152,26 +153,64 @@ En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de
 
 **Errores de comunicación:** si la conexión falla o no llega una respuesta válida, el cliente informa un error de comunicación. No debe presentar ese caso como una confirmación de ejecución.
 
-## 10. Definición de las operaciones
+## 10. Operaciones implementadas
 
-El esquema general no determina automáticamente las operaciones disponibles. Para cada operación implementada se documentarán:
+Todas las operaciones rechazan parámetros desconocidos. `ping`, `desconectar`,
+`estado`, los comandos de motores y `ayuda` no aceptan parámetros.
 
-1. Su nombre exacto.
-2. Los parámetros obligatorios y opcionales, con nombre, tipo, unidad y restricciones.
-3. Los campos devueltos en `resultado` y sus tipos.
-4. Los permisos necesarios.
-5. El significado de `OK`: recepción, aceptación, ejecución o finalización.
-6. Los errores que puede devolver.
+| Operación | Parámetros | Resultado en `OK` | Comportamiento |
+| --- | --- | --- | --- |
+| `ping` | Ninguno | `mensaje: string` | Prueba del servidor, no requiere conexión al robot. |
+| `eco` | `texto: string` | `texto: string` | Devuelve el texto recibido. |
+| `conectar` | `puerto: string` opcional | `mensaje: string` | Abre el puerto a 115200 baudios, 8N1. Por defecto usa `/dev/ttyACM0` en Linux y `COM3` en Windows. |
+| `desconectar` | Ninguno | `mensaje: string` | Cierra la conexión si está abierta; también es válida si ya estaba desconectado. |
+| `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct` | Devuelve el estado de conexión. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
+| `activar_motores` | Ninguno | `respuesta: string` | Envía `M17`. |
+| `desactivar_motores` | Ninguno | `respuesta: string` | Envía `M18`. |
+| `ayuda` | Ninguno | `comandos: string` | Informa las operaciones disponibles. |
 
-Las operaciones de prueba existentes, como `ping` y `eco`, pueden adaptarse a este esquema. Las operaciones de movimiento, consulta, autenticación y administración se incorporarán cuando se definan sus requisitos específicos.
+`posición` informa `disponible`, `mensaje` cuando no está disponible, y
+coordenadas `x`, `y`, `z`, `e` en milímetros cuando el firmware devuelve el
+formato `CURRENT POSITION: [X:... Y:... Z:... E:...]`. `actividad` contiene
+`motores`, `ventilador` y `modo_coordenadas`; cada dato declara si está
+disponible, y solo incluye `activo` o `valor` cuando se pudo leer.
+
+`estado` se puede consultar desconectado: responde `conectado: false` y marca
+posición y actividad como no disponibles, en lugar de simular lecturas.
+`activar_motores` y `desactivar_motores` requieren conexión serie; si no
+existe, responden `ESTADO_INVALIDO`. `conectar` responde `ERROR_CONEXION` si
+no puede abrir o configurar el puerto. `OK` en comandos al Arduino se devuelve
+al recibir la línea de confirmación `OK` del firmware; un timeout o una
+respuesta incompleta se informa como `ERROR_INTERNO`.
+
+Todas las operaciones requieren credenciales válidas (`parametros.credenciales`
+con `usuario` y `clave` de tipo `string`). El servidor verifica la cuenta y
+su estado en cada solicitud y elimina las credenciales antes de delegar el
+comando. Solo el rol `ADMINISTRADOR` puede conectar o desconectar; los usuarios
+autenticados y habilitados pueden consultar el estado y solicitar operaciones
+de motores.
+
+No se expone movimiento G-code desde este conjunto de operaciones. La ayuda
+no anuncia comandos que la interfaz no implemente; tampoco se definen límites
+de coordenadas.
+
+El firmware espera `\r` como terminador de comando y responde con líneas de
+texto terminadas en `\r\n`. El servidor elimina los saltos de línea de la
+respuesta agregada. La conexión espera el reinicio del Arduino y descarta el
+contenido inicial del puerto antes de enviar comandos.
+
+El servidor sigue escuchando únicamente en `127.0.0.1`. Los roles provienen
+del repositorio SQLite; el cliente no puede otorgarse permisos declarando un
+rol en los parámetros. La clave viaja por HTTP sin cifrado, por lo que no se
+debe exponer el servicio a una red no confiable.
 
 ## 11. Responsabilidades de cada componente
 
-**Cliente Python:** prepara los mensajes, solicita una operación mediante XML-RPC, recibe la respuesta y presenta el resultado al usuario. No genera G-Code ni controla el Arduino directamente.
+**Cliente Python:** prepara los mensajes, solicita una operación mediante XML-RPC, recibe la respuesta y presenta el resultado al usuario. No controla el Arduino directamente.
 
-**Servidor C++:** recibe y valida los mensajes con la biblioteca XML-RPC, identifica la operación, comprueba condiciones y permisos, ejecuta la lógica correspondiente y construye la respuesta. La conversión de operaciones de movimiento a G-Code y el envío al Arduino corresponden al lado servidor, en sus componentes específicos.
+**Servidor C++:** recibe y valida los mensajes con la biblioteca XML-RPC, identifica la operación, comprueba parámetros, ejecuta la lógica correspondiente y construye la respuesta. La clase `Robot` mantiene la conexión serie y traduce las operaciones de dominio a G-code.
 
-**Arduino:** utiliza el firmware proporcionado para interpretar las órdenes que recibe. Este contrato describe la comunicación entre el cliente y el servidor, no el formato de comunicación serial con Arduino.
+**Arduino:** utiliza el firmware proporcionado para interpretar las órdenes serie que recibe.
 
 ## 12. Seguridad y registro
 

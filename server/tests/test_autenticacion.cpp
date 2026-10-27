@@ -16,7 +16,8 @@ int main(int argc, char* argv[]) {
         repo.agregarOperador("operador", "ClaveOperador1");
         repo.agregarOperador("pedro", "ClavePedro1");
         Autenticador autenticador(repo);
-        ServicioPrueba servicio;
+        Robot robot;
+        ServicioRobot servicio(robot);
         ServicioProtegido protegido(autenticador, servicio, repo);
 
         auto solicitud = [](const std::string& actor, const std::string& clave,
@@ -41,6 +42,19 @@ int main(int argc, char* argv[]) {
         controlar(MensajeRPC::solicitud("sin-cred", "ping"), "NO_AUTENTICADO");
         controlar(MensajeRPC::solicitud("mal", "ping", {{"credenciales", "mal"}}),
                   "VALIDACION");
+
+        controlar(solicitud("operador", "ClaveOperador1", "conectar",
+                             {{"puerto", "puerto-inexistente"}}),
+                  "PERMISO_DENEGADO");
+        controlar(solicitud("operador", "ClaveOperador1", "desconectar"),
+                  "PERMISO_DENEGADO");
+        controlar(solicitud("operador", "ClaveOperador1", "estado"), "OK");
+        controlar(solicitud("operador", "ClaveOperador1", "activar_motores"),
+                  "ESTADO_INVALIDO");
+        controlar(solicitud("admin", "ClaveAdmin1", "conectar",
+                             {{"puerto", "puerto-inexistente"}}),
+                  "ERROR_CONEXION");
+        controlar(solicitud("admin", "ClaveAdmin1", "desconectar"), "OK");
 
         // Un operador autenticado no puede modificar a otro operador.
         controlar(solicitud("operador", "ClaveOperador1", "usuario.deshabilitar",

@@ -17,3 +17,18 @@ Se probaron ping, eco con UTF-8 y escape XML, contenido vacío y límite de byte
 Los warnings de parámetros no utilizados provienen de las fuentes originales; no se modificaron para silenciarlos. Se compararon los archivos incorporados con los ZIP proporcionados (ver ORIGENES.md).
 
 Esta verificación cubre comunicación local. No se probaron dos computadoras, Windows, uso efectivo del logger, conexión serie ni ejecución del simulador. Todavía no hay autenticación ni control del robot.
+
+## Actualización: incorporación de la clase Robot (27 de octubre de 2026)
+
+Se conectó `ServicioRobot` al servidor, se agregó `Robot.cpp` a la compilación y se verificó la comunicación XML-RPC en Windows con MinGW-w64:
+
+| Grupo | Resultado |
+| --- | --- |
+| Compilación nativa del servidor y prueba C++ | Correcta. |
+| Dominio/servicio C++ | Comprobaciones correctas. |
+| Pruebas unitarias Python | 10 pruebas correctas. |
+| Pruebas de integración | 20 pruebas correctas. |
+
+Las pruebas cubren la validación de parámetros, el estado explícito cuando el robot está desconectado, los datos no disponibles, la ayuda sin comandos de movimiento y el rechazo de un puerto serie inexistente. No se verificó la ejecución de movimientos sobre el robot.
+
+Se verificó físicamente el 27 de octubre de 2026 con el Arduino en `COM5`: conectar, consultar `M114` y desconectar respondieron `OK`. El firmware informó modo absoluto, motores desactivados y ventilador desactivado; la posición se devolvió explícitamente como no disponible porque la respuesta no contenía `CURRENT POSITION`. No se enviaron comandos de activación de motores ni de movimiento. La autorización por rol sigue pendiente hasta incorporar autenticación.

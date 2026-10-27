@@ -24,9 +24,12 @@ SERVIDOR = ROOT / "server" / "build" / (
 
 
 CREDENCIALES = {"usuario": "operador", "clave": "ClaveOperador1"}
+ADMIN_CREDENCIALES = {"usuario": "admin", "clave": "ClaveAdmin1"}
 
-def solicitud(operacion, parametros=None):
-    return MensajeRPC.solicitud(operacion, {**(parametros or {}), "credenciales": CREDENCIALES})
+def solicitud(operacion, parametros=None, credenciales=CREDENCIALES):
+    return MensajeRPC.solicitud(
+        operacion, {**(parametros or {}), "credenciales": credenciales}
+    )
 
 class IntegracionTests(unittest.TestCase):
     @classmethod
@@ -106,6 +109,8 @@ class IntegracionTests(unittest.TestCase):
             ("eco", {}),
             ("eco", {"texto": 123}),
             ("eco", {"texto": "hola", "extra": True}),
+            ("ayuda", {"extra": True}),
+            ("activar_motores", {"extra": True}),
         ):
             with self.subTest(operacion=operacion, parametros=parametros):
                 respuesta = self.cliente.enviar(
@@ -115,6 +120,72 @@ class IntegracionTests(unittest.TestCase):
                 self.assertIn("mensaje", respuesta.resultado)
         self.assertEqual(self.servicios.ping().codigo, "OK")
 
+    def test_operaciones_robot_sin_conexion(self):
+        for operacion, parametros in (
+            ("activar_motores", {}),
+            ("desactivar_motores", {}),
+        ):
+            with self.subTest(operacion=operacion):
+                respuesta = self.cliente.enviar(
+                    solicitud(operacion, parametros)
+                )
+                self.assertEqual(respuesta.codigo, "ESTADO_INVALIDO")
+                self.assertIn("mensaje", respuesta.resultado)
+
+    def test_estado_desconectado_informa_datos_no_disponibles(self):
+        respuesta = self.cliente.enviar(solicitud("estado"))
+        self.assertEqual(respuesta.codigo, "OK")
+        self.assertFalse(respuesta.resultado["conectado"])
+        self.assertFalse(respuesta.resultado["posicion"]["disponible"])
+        self.assertIn("mensaje", respuesta.resultado["posicion"])
+        for dato in respuesta.resultado["actividad"].values():
+            self.assertFalse(dato["disponible"])
+            self.assertIn("mensaje", dato)
+
+    def test_ayuda_y_desconexion_no_requieren_robot(self):
+        ayuda = self.cliente.enviar(solicitud("ayuda"))
+        self.assertEqual(ayuda.codigo, "OK")
+        self.assertIn("M17", ayuda.resultado["comandos"])
+        self.assertIn("M18", ayuda.resultado["comandos"])
+        self.assertNotIn("G0", ayuda.resultado["comandos"])
+        self.assertIn("no hay limites", ayuda.resultado["comandos"].lower())
+        desconexion = self.cliente.enviar(
+            solicitud("desconectar", credenciales=ADMIN_CREDENCIALES)
+        )
+        self.assertEqual(desconexion.codigo, "OK")
+        self.assertFalse(desconexion.resultado["conectado"])
+
+    def test_conexion_rechaza_puerto_inexistente(self):
+        respuesta = self.cliente.enviar(
+            solicitud(
+                "conectar", {"puerto": "puerto-inexistente"},
+                credenciales=ADMIN_CREDENCIALES
+            )
+        )
+        self.assertEqual(respuesta.codigo, "ERROR_CONEXION")
+        self.assertFalse(respuesta.resultado["conectado"])
+        self.assertIn("mensaje", respuesta.resultado)
+
+    def test_solo_administrador_puede_conectar_o_desconectar(self):
+        operador_conectar = self.cliente.enviar(
+            solicitud(
+                "conectar", {"puerto": "puerto-inexistente"},
+                credenciales=CREDENCIALES
+            )
+        )
+        self.assertEqual(operador_conectar.codigo, "PERMISO_DENEGADO")
+
+        operador_desconectar = self.cliente.enviar(
+            solicitud("desconectar", credenciales=CREDENCIALES)
+        )
+        self.assertEqual(operador_desconectar.codigo, "PERMISO_DENEGADO")
+
+        admin_desconectar = self.cliente.enviar(
+            solicitud("desconectar", credenciales=ADMIN_CREDENCIALES)
+        )
+        self.assertEqual(admin_desconectar.codigo, "OK")
+        self.assertFalse(admin_desconectar.resultado["conectado"])
+
     def test_argumentos_xmlrpc_invalidos_y_recuperacion(self):
         for argumentos in ((), ("texto",), ({}, {})):
             with self.subTest(argumentos=argumentos), ServerProxy(self.url) as remoto:
@@ -123,7 +194,7 @@ class IntegracionTests(unittest.TestCase):
         self.assertEqual(self.servicios.ping().codigo, "OK")
 
     def test_mensajes_invalidos_son_fault(self):
-        base = MensajeRPC.solicitud("eco", {"texto": "OK"}).serializar()
+        base = solicitud("eco", {"texto": "OK"}).serializar()
         invalidos = [
             base | {"id": ""},
             base | {"tipo": "respuesta", "codigo": "OK"},

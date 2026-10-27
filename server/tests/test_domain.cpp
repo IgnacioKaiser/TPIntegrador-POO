@@ -21,7 +21,8 @@ void exigirInvalido(Accion accion) {
 int main() {
     try {
         using namespace robotrpc;
-        ServicioPrueba servicio;
+        Robot robot;
+        ServicioRobot servicio(robot);
 
         const auto solicitud = MensajeRPC::solicitud(
             "prueba_1", "eco", {{"texto", "Mecatronica <robot> & pinza"}});
@@ -45,8 +46,41 @@ int main() {
                    "VALIDACION", "Eco debe requerir texto.");
         exigir(servicio.atender(MensajeRPC::solicitud("e2", "eco", {{"texto", 3}})).codigo() ==
                    "VALIDACION", "Eco debe requerir string.");
-        exigir(servicio.atender(MensajeRPC::solicitud("u1", "mover")).codigo() ==
+        exigir(servicio.atender(MensajeRPC::solicitud("u1", "operacion_desconocida")).codigo() ==
                    "OPERACION_NO_SOPORTADA", "Operacion desconocida incorrecta.");
+        const auto estadoDesconectado =
+            servicio.atender(MensajeRPC::solicitud("u2", "estado"));
+        exigir(estadoDesconectado.codigo() == "OK" &&
+                   !estadoDesconectado.resultado().at("conectado").obtener<bool>(),
+               "Estado debe informar que el robot esta desconectado.");
+        const auto& posicion = estadoDesconectado.resultado()
+                                   .at("posicion").obtener<EstructuraRPC>();
+        exigir(!posicion.at("disponible").obtener<bool>() &&
+                   !posicion.at("mensaje").obtener<std::string>().empty(),
+               "Estado debe indicar que la posicion no esta disponible.");
+        const auto& actividad = estadoDesconectado.resultado()
+                                    .at("actividad").obtener<EstructuraRPC>();
+        exigir(!actividad.at("motores").obtener<EstructuraRPC>()
+                    .at("disponible").obtener<bool>(),
+               "Estado debe indicar que la actividad no esta disponible.");
+        exigir(servicio.atender(MensajeRPC::solicitud("u3", "mover")).codigo() ==
+                   "OPERACION_NO_SOPORTADA",
+               "El servicio no debe exponer comandos de movimiento.");
+        exigir(servicio.atender(MensajeRPC::solicitud(
+                   "u5", "activar_motores", {{"extra", true}})).codigo() ==
+                   "VALIDACION", "Motores debe rechazar parametros desconocidos.");
+        exigir(servicio.atender(MensajeRPC::solicitud("u6", "ayuda")).codigo() ==
+                   "OK", "Ayuda debe estar disponible sin conexion.");
+        const auto respuestaAyuda =
+            servicio.atender(MensajeRPC::solicitud("u8", "ayuda"));
+        const auto& ayuda = respuestaAyuda.resultado().at("comandos")
+                                .obtener<std::string>();
+        exigir(ayuda.find("M17") != std::string::npos &&
+                   ayuda.find("M18") != std::string::npos &&
+                   ayuda.find("G0") == std::string::npos,
+               "Ayuda debe limitarse a comandos de control implementados.");
+        exigir(servicio.atender(MensajeRPC::solicitud("u7", "desconectar")).codigo() ==
+                   "OK", "Desconectar debe poder ejecutarse sin conexion.");
 
         exigirInvalido([&] { servicio.atender(respuesta); });
         auto campos = solicitud.serializar();
@@ -67,7 +101,7 @@ int main() {
         exigir(copiado.parametros().at("lista").obtener<ValorRPC::Arreglo>().size() == 4,
                "Los valores anidados se perdieron.");
 
-        std::cout << "15 comprobaciones del modelo y el servicio: OK\n";
+        std::cout << "Comprobaciones del modelo y el servicio: OK\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

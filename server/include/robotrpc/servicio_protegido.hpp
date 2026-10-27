@@ -7,7 +7,7 @@ namespace robotrpc {
 class ServicioProtegido {
 public:
     ServicioProtegido(const Autenticador& autenticador,
-                      const ServicioPrueba& servicio,
+                      const ServicioRobot& servicio,
                       RepositorioUsuarios& usuarios)
         : autenticador_(autenticador), servicio_(servicio), usuarios_(usuarios) {}
 
@@ -15,7 +15,7 @@ public:
 
 private:
     const Autenticador& autenticador_;
-    const ServicioPrueba& servicio_;
+    const ServicioRobot& servicio_;
     RepositorioUsuarios& usuarios_;
 };
 }

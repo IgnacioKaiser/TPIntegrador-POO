@@ -40,6 +40,12 @@ MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
     parametros.erase("credenciales");
     const auto limpia = MensajeRPC::solicitud(solicitud.id(), solicitud.operacion(), parametros);
 
+    if ((solicitud.operacion() == "conectar" ||
+         solicitud.operacion() == "desconectar") &&
+        solicitante.rol != Rol::ADMINISTRADOR)
+        return error(solicitud, "PERMISO_DENEGADO",
+                     "Solo el administrador puede conectar o desconectar el robot.");
+
     if (solicitud.operacion() == "usuario.habilitar" ||
         solicitud.operacion() == "usuario.deshabilitar") {
 
@@ -79,7 +85,7 @@ MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
         }
     }
 
-    // ping y eco mantienen su implementacion previa y nunca ven la clave.
+    // Las credenciales se eliminan antes de delegar cualquier operacion.
     return servicio_.atender(limpia);
 }
 } // namespace robotrpc

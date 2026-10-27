@@ -1,6 +1,8 @@
 #pragma once
 #include "robotrpc/servicio_protegido.hpp"
+#include "domain/Robot.h"
 #include <stdexcept>
+#include <string>
 
 namespace robotrpc {
 
@@ -18,7 +20,8 @@ private:
     unsigned short puerto_;
     RepositorioUsuarios usuarios_;
     Autenticador autenticador_;
-    ServicioPrueba servicio_;
+    Robot robot_;
+    ServicioRobot servicio_;
     ServicioProtegido protegido_;
 };
 

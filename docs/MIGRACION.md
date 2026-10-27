@@ -8,7 +8,7 @@
 | Cliente Python | Conserva xmlrpc.client estándar, CLI, validaciones y timeout. |
 | Compilación | Fuentes locales y bibliotecas estáticas; elimina xmlrpc-c-config. |
 | Material de TP2 | Logger, File, LogRecord y excepciones incluidos; logger compila, uso pendiente. |
-| Simulador | Incluido como recurso original; integración serie pendiente. |
+| Robot | Incluye una clase de dominio que conecta por serie y envía `M114`, `M17` y `M18`; ver `docs/CONTRATO.md`. |
 
 La herencia de XmlRpcServerMethod implementa el contrato exigido por la biblioteca. ServidorLocal hereda de XmlRpcServer para enlazar únicamente a loopback sin modificar los archivos del anexo. Se emplea el manejador de conexiones y HTTP de XmlRpc++, no un servidor HTTP propio.
 

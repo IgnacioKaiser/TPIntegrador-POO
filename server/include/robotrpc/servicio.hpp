@@ -1,12 +1,17 @@
 #pragma once
 #include "robotrpc/mensaje.hpp"
+#include "domain/Robot.h"
 
 namespace robotrpc {
 
-// Caso de uso sin consola, red, estado compartido ni acceso al robot.
-class ServicioPrueba {
+class ServicioRobot {
+private:
+    Robot& robot_;
+
 public:
-    virtual ~ServicioPrueba() = default;
+    explicit ServicioRobot(Robot& robot) : robot_(robot) {}
+
+    virtual ~ServicioRobot() = default;
     virtual MensajeRPC atender(const MensajeRPC& solicitud) const;
 };
 
