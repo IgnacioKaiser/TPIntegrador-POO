@@ -172,6 +172,7 @@ de motores, `tarea.listar` y `ayuda` no aceptan parámetros adicionales.
 | `tarea.listar` | Ninguno | `tareas: array` de `struct` | Operador: tareas propias. Administrador: todas. |
 | `log.consultar` | Filtros y paginación opcionales (ver abajo) | `registros: array`, `total: int`, `offset: int`, `mostrados: int` | Consulta del CSV; solo administrador. |
 | `informe.usuarios` | Filtros opcionales (ver abajo) | `usuarios: array`, `total_peticiones: int`, `total_ok: int`, `total_errores: int` | Totales de peticiones por identidad autenticada; solo administrador. |
+| `informe.propio` | `offset: int`, `limite: int`, opcionales | Estado, referencia del periodo, inicio, detalle y totales (ver abajo) | Solo la actividad de la identidad autenticada; ambos roles. |
 | `conectar` | `puerto: string` opcional | `mensaje: string` | Abre el puerto a 115200 baudios, 8N1. Por defecto usa `/dev/ttyACM0` en Linux y `COM3` en Windows. |
 | `desconectar` | Ninguno | `mensaje: string` | Cierra la conexión si está abierta; también es válida si ya estaba desconectado. |
 | `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct`, `modo_trabajo: string`, `modo_coordenadas: string` | Devuelve el estado de conexión y los modos seleccionados. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
@@ -360,6 +361,69 @@ El informe actual cuenta peticiones acumuladas; no devuelve estado del robot,
 inicio de actividad ni detalle de órdenes desde la última conexión. No equivale
 al reporte completo exigido por la consigna (página 3). Alcance del CSV, eventos
 y limitaciones: [US-18/US-20/US-21](backlog/US-18-20-21.md).
+
+### Informe de actividad propio (US-19)
+
+`informe.propio` conserva los seis campos y la autenticación por solicitud. Está
+disponible para `OPERADOR` y `ADMINISTRADOR` habilitados. El usuario del informe
+proviene exclusivamente de Autenticador. No acepta `usuario`, `rol`, IDs ni otros
+filtros, aunque indiquen la propia cuenta; no modifica los permisos de las
+consultas administrativas anteriores.
+
+Solo admite estos parámetros además de `credenciales`:
+
+| Parámetro | Tipo XML-RPC | Predeterminado | Rango |
+| --- | --- | --- | --- |
+| `offset` | `int` / `i4` | 0 | 0..100000000 |
+| `limite` | `int` / `i4` | 50 | 1..100 |
+
+Booleanos, texto y números decimales no sustituyen a esos enteros. El resultado
+con `OK` contiene exactamente:
+
+| Campo | Tipo | Significado |
+| --- | --- | --- |
+| `usuario` | `string` | Nombre de la identidad autenticada. |
+| `desde` | `string` | Fecha UTC `AAAA-MM-DDTHH:MM:SSZ` del evento de referencia; vacía si no existe. |
+| `referencia` | `string` | `conectar` para la última conexión serie exitosa; `inicio` si se inició el servidor y aún no hubo conexión; vacío si faltan eventos. |
+| `inicio_actividad` | `string` | Fecha UTC de la primera petición propia del periodo, o `""` si no hay. |
+| `estado` | `struct` | Datos de la operación `estado` existente, con sus indicadores de disponibilidad y modos; sin `reporte_firmware`. |
+| `codigo_estado` | `string` | Código de esa consulta interna de estado; permite informar un error parcial sin perder el detalle propio. |
+| `registros` | `array` de `struct` | Las mismas nueve columnas string de `log.consultar`, únicamente filas `PETICION` de la identidad autenticada. |
+| `total` | `int` / `i4` | Cantidad de peticiones propias del periodo entero, antes de paginar. |
+| `errores` | `int` / `i4` | Cantidad de esas peticiones con código distinto de `OK`, antes de paginar. |
+| `offset` | `int` / `i4` | Desplazamiento solicitado. |
+| `mostrados` | `int` / `i4` | Longitud de `registros`. |
+
+El periodo comienza después del evento de conexión exitosa más reciente que
+abre una conexión, o del inicio del servidor si es posterior. Se reconocen los
+eventos por orden de archivo, incluso cuando tienen la misma marca de segundo.
+Un conectar repetido estando conectado o rechazado no reinicia el periodo;
+desconectar tampoco lo borra. Un nuevo inicio invalida la conexión del proceso
+anterior. Si no hay referencia, se usa lo disponible del CSV con fecha y
+referencia vacías. La petición `conectar` que precede al evento de apertura queda
+fuera del periodo nuevo.
+
+Se incluyen consultas y órdenes rechazadas después de autenticar; nunca se
+atribuyen intentos sin identidad verificada a un nombre declarado. El inicio y
+los totales no dependen de la página. Sin actividad: `registros: []`, `total: 0`,
+`errores: 0`, `mostrados: 0`, `inicio_actividad: ""`. Con `offset >= total`, la
+página queda vacía, pero conserva los totales. Se mantiene el orden de archivo,
+la saturación int32 y la escritura posterior a la respuesta: la consulta actual
+no aparece en su propio resultado. No hay instantánea entre páginas.
+
+El estado se obtiene una vez, sin otra petición de aplicación registrada. No se
+requiere conexión serie para consultar. `OK` exterior confirma el informe;
+si falla la lectura serie se conserva el estado parcial con
+`codigo_estado: ERROR_INTERNO`, mensaje genérico y posición no disponible.
+No implica ejecución física ni contiene parámetros, credenciales o contenido.
+
+Errores: `NO_AUTENTICADO` para credenciales ausentes/incorrectas;
+`PERMISO_DENEGADO` para cuenta deshabilitada con clave correcta; `VALIDACION`
+para credenciales mal formadas, campos desconocidos o paginación inválida;
+`ERROR_INTERNO` para fallo de usuarios, registro no configurado o fallo al
+construir el informe. Incluyen `resultado.mensaje` sin rutas internas.
+Los Fault del sobre mantienen su tratamiento. Ver [US-19](backlog/US-19.md)
+para el fundamento del periodo, recorrido, pruebas y límites.
 
 ### Control serie existente
 

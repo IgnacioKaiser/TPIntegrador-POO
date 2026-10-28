@@ -213,6 +213,41 @@ PaginaActividad RegistroActividadCsv::consultar(const FiltroActividad& f) const 
     return pagina;
 }
 
+ActividadPropia RegistroActividadCsv::actividadPropia(
+    const std::string& usuario, std::size_t offset, std::size_t limite) const {
+    if (usuario.empty()) throw std::invalid_argument("Se requiere identidad verificada.");
+    FiltroActividad filtro;
+    filtro.usuario = usuario;
+    filtro.offset = offset;
+    filtro.limite = limite;
+    validarFiltro(filtro);
+    std::lock_guard<std::mutex> lock(mutex_);
+    ActividadPropia informe;
+    bool conectado = false;
+    recorrer(ruta_, [&](const EntradaActividad& r) {
+        // El orden del archivo distingue eventos ocurridos en el mismo segundo.
+        if (r.tipo == "EVENTO" && r.codigo == "OK") {
+            const bool inicio = r.modulo == "ServidorRPC" && r.operacion == "inicio";
+            const bool conexion = r.modulo == "Robot" && r.operacion == "conectar";
+            if (inicio || (conexion && !conectado)) {
+                informe = ActividadPropia{};
+                informe.desde = r.fecha_hora;
+                informe.referencia = r.operacion;
+            }
+            if (inicio || (r.modulo == "Robot" && r.operacion == "desconectar"))
+                conectado = false;
+            else if (conexion) conectado = true;
+        }
+        if (r.tipo != "PETICION" || r.usuario != usuario) return;
+        if (informe.inicio_actividad.empty()) informe.inicio_actividad = r.fecha_hora;
+        if (r.codigo != "OK") ++informe.errores;
+        const auto posicion = informe.pagina.total++;
+        if (posicion >= offset && informe.pagina.registros.size() < limite)
+            informe.pagina.registros.push_back(r);
+    });
+    return informe;
+}
+
 std::vector<ResumenUsuario> RegistroActividadCsv::informeUsuarios(const FiltroActividad& filtro) const {
     FiltroActividad f = filtro;
     f.tipo = "PETICION";

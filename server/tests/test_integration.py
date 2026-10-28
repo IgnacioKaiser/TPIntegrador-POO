@@ -92,6 +92,116 @@ class IntegracionTests(unittest.TestCase):
                 raise AssertionError("El servidor no termino al solicitar su cierre.")
         cls.salida.close()
 
+    def test_actividad_propia_aislamiento_detalle_y_sin_actividad(self):
+        # Este usuario no envio pedidos antes de su primera consulta.
+        nueva = ServiciosPrueba(self.cliente, "vacio", "ClaveVacio1")
+        vacia = nueva.actividad_propia()
+        self.assertEqual(vacia.codigo, "OK")
+        self.assertEqual(vacia.resultado['total'], 0)
+        self.assertEqual(vacia.resultado['errores'], 0)
+        self.assertEqual(vacia.resultado['registros'], [])
+        self.assertEqual(vacia.resultado['inicio_actividad'], "")
+        self.assertEqual(vacia.resultado['referencia'], "inicio")
+        self.assertFalse(vacia.resultado['estado']['conectado'])
+        self.assertFalse(vacia.resultado['estado']['posicion']['disponible'])
+        segunda = nueva.actividad_propia()
+        self.assertEqual([r['id_solicitud'] for r in segunda.resultado['registros']], [vacia.id])
+
+        primero = self.servicios.eco("contenido_privado_us19")
+        rechazo = self.servicios.ir_a_origen()  # Desconectado: error de operacion propio.
+        bruno = ServiciosPrueba(self.cliente, **BRUNO_CREDENCIALES)
+        ajena = bruno.ping()
+        for servicios, nombre, esperado in ((self.servicios, "operador", primero.id),
+                                            (bruno, "bruno", ajena.id)):
+            datos = servicios.actividad_propia(limite=100).resultado
+            self.assertEqual(datos['usuario'], nombre)
+            self.assertTrue(all(r['usuario'] == nombre for r in datos['registros']))
+            ids = [r['id_solicitud'] for r in datos['registros']]
+            self.assertIn(esperado, ids)
+            self.assertNotIn(ajena.id if nombre == "operador" else primero.id, ids)
+            self.assertNotIn("contenido_privado_us19", str(datos))
+            self.assertNotIn("credenciales", str(datos))
+            self.assertEqual(datos['codigo_estado'], "OK")
+        propia = self.servicios.actividad_propia(limite=100).resultado
+        self.assertIn(rechazo.id, [r['id_solicitud'] for r in propia['registros'] if r['codigo'] != 'OK'])
+        self.assertGreaterEqual(propia['errores'], 1)
+        pagina = self.servicios.actividad_propia(offset=1, limite=1).resultado
+        self.assertEqual(pagina['registros'], propia['registros'][1:2])
+        self.assertEqual(pagina['mostrados'], 1)
+        self.assertEqual(pagina['offset'], 1)
+        self.assertEqual(self.servicios.actividad_propia(offset=100000000).resultado['registros'], [])
+
+        administrador = ServiciosPrueba(self.cliente, **ADMIN_CREDENCIALES)
+        antes = administrador.informe_usuarios(usuario="bruno").resultado
+        admin = administrador.actividad_propia().resultado
+        self.assertEqual(admin['usuario'], 'admin')
+        self.assertTrue(all(r['usuario'] == 'admin' for r in admin['registros']))
+        self.assertEqual(administrador.informe_usuarios(usuario="bruno").resultado, antes)
+        self.assertGreater(administrador.consultar_log(usuario="bruno").resultado['total'], 0)
+        for op in ("log.consultar", "informe.usuarios"):
+            self.assertEqual(self.cliente.enviar(solicitud(op)).codigo, "PERMISO_DENEGADO")
+
+        import csv
+        with (Path(self.temporal.name) / "actividad.csv").open(encoding='utf-8', newline='') as f:
+            filas = list(csv.DictReader(f))
+        self.assertTrue(any(r['id_solicitud'] == primero.id for r in filas))
+        for secreto in ("contenido_privado_us19", "ClaveOperador1", "ClaveBruno1", "$argon2"):
+            self.assertNotIn(secreto, str(filas))
+
+    def test_actividad_rechaza_identidades_filtros_y_credenciales(self):
+        for parametros in ({"usuario": "bruno"}, {"usuario": "operador"}, {"rol": "ADMINISTRADOR"},
+                           {"usuario_id": 2}, {"desde": "2026-10-28"}, {"codigo": "OK"},
+                           {"tipo": "PETICION"}, {"limite": 0}, {"limite": 101},
+                           {"offset": -1}, {"offset": 100000001}, {"offset": True},
+                           {"limite": 1.5}, {"offset": "0"}):
+            with self.subTest(parametros=parametros):
+                respuesta = self.cliente.enviar(solicitud("informe.propio", parametros))
+                self.assertEqual(respuesta.codigo, "VALIDACION")
+                self.assertEqual(set(respuesta.resultado), {"mensaje"})
+        for credenciales, codigo in (({"usuario": "operador", "clave": "Incorrecta"}, "NO_AUTENTICADO"),
+                                     ({"usuario": "nadie", "clave": "Incorrecta"}, "NO_AUTENTICADO"),
+                                     ({"usuario": 5, "clave": "Incorrecta"}, "VALIDACION")):
+            respuesta = self.cliente.enviar(solicitud("informe.propio", credenciales=credenciales))
+            self.assertEqual(respuesta.codigo, codigo)
+            self.assertEqual(set(respuesta.resultado), {"mensaje"})
+        self.assertEqual(self.cliente.enviar(MensajeRPC.solicitud("informe.propio")).codigo, "NO_AUTENTICADO")
+        administrador = ServiciosPrueba(self.cliente, **ADMIN_CREDENCIALES)
+        self.assertEqual(administrador.deshabilitar_operador("bruno").codigo, "OK")
+        try:
+            bruno = ServiciosPrueba(self.cliente, **BRUNO_CREDENCIALES)
+            self.assertEqual(bruno.actividad_propia().codigo, "PERMISO_DENEGADO")
+        finally:
+            self.assertEqual(administrador.habilitar_operador("bruno").codigo, "OK")
+        intentos = administrador.consultar_log(codigo="NO_AUTENTICADO").resultado['registros']
+        self.assertTrue(intentos)
+        self.assertTrue(all(r['usuario'] == "" for r in intentos))
+
+    def test_actividad_reinicio_y_cliente_real(self):
+        pedido = self.servicios.ping()
+        self.proceso.terminate()
+        self.proceso.wait(timeout=7)
+        self.iniciar_servidor()
+        datos = self.servicios.actividad_propia().resultado
+        self.assertEqual(datos['referencia'], "inicio")
+        self.assertNotIn(pedido.id, [r['id_solicitud'] for r in datos['registros']])
+        administrador = ServiciosPrueba(self.cliente, **ADMIN_CREDENCIALES)
+        self.assertIn(pedido.id, [r['id_solicitud'] for r in
+                      administrador.consultar_log(usuario="operador", limite=100).resultado['registros']])
+        for nombre, clave in (("operador", "ClaveOperador1"), ("bruno", "ClaveBruno1"),
+                              ("admin", "ClaveAdmin1")):
+            for argumentos, opciones in ((["actividad", "--limite", "2"], ""),
+                                         ([], "21\n0\n2\n0\n")):
+                with self.subTest(usuario=nombre, argumentos=argumentos):
+                    resultado = subprocess.run(
+                        [sys.executable, "-B", "-c",
+                         "import sys; import robot_client.cli as c; "
+                         "c.getpass=lambda _:sys.stdin.readline().rstrip('\\n'); sys.exit(c.main())",
+                         "--url", self.url, *argumentos], cwd=ROOT / "client",
+                        input=f"{nombre}\n{clave}\n{opciones}", capture_output=True, text=True, timeout=7)
+                    self.assertEqual(resultado.returncode, 0, resultado.stderr)
+                    self.assertIn(f"Actividad propia de {nombre}", resultado.stdout)
+                    self.assertNotIn(clave, resultado.stdout + resultado.stderr)
+
     def test_ping(self):
         respuesta = self.servicios.ping()
         self.assertEqual(respuesta.codigo, "OK")

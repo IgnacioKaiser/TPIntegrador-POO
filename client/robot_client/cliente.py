@@ -126,6 +126,9 @@ class ServiciosPrueba:
     def listar_tareas(self) -> MensajeRPC:
         return self._enviar("tarea.listar")
 
+    def actividad_propia(self, offset=0, limite=50) -> MensajeRPC:
+        return self._enviar("informe.propio", {"offset": offset, "limite": limite})
+
     def informe_usuarios(self, usuario="", desde="", hasta="", codigo="") -> MensajeRPC:
         datos = {k: v for k, v in {"usuario": usuario, "desde": desde,
                                   "hasta": hasta, "codigo": codigo}.items() if v}

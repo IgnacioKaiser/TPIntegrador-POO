@@ -2,14 +2,22 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <filesystem>
 
-// Solo en pruebas: detecta si las tareas llegan al servicio de control del robot.
+// Solo en pruebas: cuenta consultas del robot y simula un estado parcial.
 class ServicioEspia : public robotrpc::ServicioRobot {
 public:
     explicit ServicioEspia(Robot& robot) : ServicioRobot(robot) {}
     mutable int llamadas = 0;
+    bool estadoParcial = false;
     robotrpc::MensajeRPC atender(const robotrpc::MensajeRPC& solicitud) const override {
         ++llamadas;
+        if (estadoParcial && solicitud.operacion() == "estado")
+            return robotrpc::MensajeRPC::respuestaA(solicitud,
+                {{"conectado", true}, {"posicion", robotrpc::EstructuraRPC{
+                    {"disponible", false}, {"mensaje", "ruta_interna_de_prueba"}}},
+                 {"actividad", robotrpc::EstructuraRPC{}},
+                 {"mensaje", "ruta_interna_de_prueba"}}, "ERROR_INTERNO");
         return ServicioRobot::atender(solicitud);
     }
 };
@@ -157,6 +165,33 @@ int main(int argc, char* argv[]) {
         controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
                              {{"usuario", "pedro"}}), "OK");
         exigir(!estado("pedro"), "La deshabilitacion repetida altero el estado.");
+
+        // US-19: una solicitud rechazada no llega a consultar el estado del robot.
+        RegistroActividadCsv registro((std::filesystem::path(argv[1]).parent_path() / "actividad.csv").string());
+        ServicioProtegido conRegistro(autenticador, servicio, repo, tareas, &registro);
+        const int antesInforme = servicio.llamadas;
+        for (const auto& s : {
+                 solicitud("operador", "Incorrecta", "informe.propio"),
+                 solicitud("pedro", "ClavePedro1", "informe.propio"),
+                 solicitud("operador", "ClaveOperador1", "informe.propio", {{"usuario", "admin"}}),
+                 solicitud("operador", "ClaveOperador1", "informe.propio", {{"limite", 0}})}) {
+            exigir(conRegistro.atender(s).codigo() != "OK", "Se acepto una consulta invalida.");
+        }
+        exigir(servicio.llamadas == antesInforme, "Un rechazo consulto el robot.");
+        const auto propia = conRegistro.atender(solicitud("operador", "ClaveOperador1", "informe.propio"));
+        exigir(propia.codigo() == "OK", "Fallo la consulta propia valida.");
+        exigir(servicio.llamadas == antesInforme + 1, "No reutilizo una unica consulta de estado.");
+        exigir(propia.resultado().at("usuario").obtener<std::string>() == "operador",
+               "La consulta propia devolvio otra identidad.");
+        servicio.estadoParcial = true;
+        const auto parcial = conRegistro.atender(solicitud("operador", "ClaveOperador1", "informe.propio"));
+        exigir(parcial.codigo() == "OK", "Un estado parcial oculto el informe.");
+        exigir(parcial.resultado().at("codigo_estado").obtener<std::string>() == "ERROR_INTERNO",
+               "Se oculto el fallo de estado.");
+        const auto& datosEstado = parcial.resultado().at("estado").obtener<EstructuraRPC>();
+        exigir(datosEstado.at("conectado").obtener<bool>(), "Se perdio el estado parcial conocido.");
+        exigir(datosEstado.at("mensaje").obtener<std::string>().find("ruta_interna") == std::string::npos,
+               "El informe expuso detalles internos de un error.");
 
         std::cout << "Autenticacion y US-05: permisos, rechazo y cambios en SQLite OK.\n";
         return 0;

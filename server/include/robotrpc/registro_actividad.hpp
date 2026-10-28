@@ -28,6 +28,12 @@ struct ResumenUsuario {
     std::size_t peticiones = 0, exitosas = 0, rechazadas = 0;
 };
 
+struct ActividadPropia {
+    std::string desde, referencia, inicio_actividad;
+    PaginaActividad pagina;
+    std::size_t errores = 0;
+};
+
 // Modulo independiente de XML-RPC, SQLite y Robot.
 class RegistroActividadCsv {
 public:
@@ -41,6 +47,8 @@ public:
 
     PaginaActividad consultar(const FiltroActividad& filtro) const;
     std::vector<ResumenUsuario> informeUsuarios(const FiltroActividad& filtro) const;
+    ActividadPropia actividadPropia(const std::string& usuario,
+                                   std::size_t offset = 0, std::size_t limite = 50) const;
 
     const std::string& ruta() const noexcept { return ruta_; }
 private:

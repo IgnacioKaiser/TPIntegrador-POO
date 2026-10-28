@@ -28,6 +28,11 @@ EstructuraRPC datosTarea(const Tarea& tarea, const std::string& propietario) {
     return {{"id", tarea.id}, {"nombre", tarea.nombre}, {"propietario", propietario}};
 }
 
+std::int32_t enteroRpc(std::size_t n) {
+    const auto maximo = static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max());
+    return static_cast<std::int32_t>(n > maximo ? maximo : n);
+}
+
 } // namespace
 
 MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
@@ -79,6 +84,49 @@ MensajeRPC ServicioProtegido::atenderInterno(
     auto parametros = solicitud.parametros();
     parametros.erase("credenciales");
     const auto limpia = MensajeRPC::solicitud(solicitud.id(), solicitud.operacion(), parametros);
+    if (solicitud.operacion() == "informe.propio") {
+        std::size_t offset = 0, limite = 50;
+        for (const auto& campo : parametros) {
+            if (campo.first != "offset" && campo.first != "limite")
+                return error(solicitud, "VALIDACION", "Solo se aceptan offset y limite.");
+            const auto* n = std::get_if<std::int32_t>(&campo.second.dato());
+            if (!n || *n < 0)
+                return error(solicitud, "VALIDACION", "La paginacion requiere enteros no negativos.");
+            if (campo.first == "offset") offset = static_cast<std::size_t>(*n);
+            else limite = static_cast<std::size_t>(*n);
+        }
+        if (!registro_) return error(solicitud, "ERROR_INTERNO", "Registro no configurado.");
+        try {
+            const auto informe = registro_->actividadPropia(solicitante.nombre, offset, limite);
+            ValorRPC::Arreglo registros;
+            for (const auto& r : informe.pagina.registros) {
+                registros.emplace_back(EstructuraRPC{
+                    {"fecha_hora", r.fecha_hora}, {"tipo", r.tipo}, {"id_solicitud", r.id_solicitud},
+                    {"usuario", r.usuario}, {"nodo_cliente", r.nodo_cliente}, {"modulo", r.modulo},
+                    {"operacion", r.operacion}, {"codigo", r.codigo}, {"detalle", r.detalle}});
+            }
+            // Reutilizar la consulta de estado; no generar otra peticion ni mover el robot.
+            const auto estado = servicio_.atender(MensajeRPC::solicitud(solicitud.id(), "estado"));
+            auto datosEstado = estado.resultado();
+            datosEstado.erase("reporte_firmware");
+            if (estado.codigo() != "OK") {
+                datosEstado["mensaje"] = "No se pudo completar la consulta de estado.";
+                datosEstado["posicion"] = EstructuraRPC{
+                    {"disponible", false}, {"mensaje", "Posicion no disponible."}};
+            }
+            return MensajeRPC::respuestaA(solicitud,
+                {{"usuario", solicitante.nombre}, {"desde", informe.desde},
+                 {"referencia", informe.referencia}, {"inicio_actividad", informe.inicio_actividad},
+                 {"estado", datosEstado}, {"codigo_estado", estado.codigo()},
+                 {"registros", registros}, {"total", enteroRpc(informe.pagina.total)},
+                 {"errores", enteroRpc(informe.errores)}, {"offset", enteroRpc(offset)},
+                 {"mostrados", enteroRpc(registros.size())}});
+        } catch (const std::invalid_argument& e) {
+            return error(solicitud, "VALIDACION", e.what());
+        } catch (const std::exception&) {
+            return error(solicitud, "ERROR_INTERNO", "No se pudo consultar la actividad propia.");
+        }
+    }
     if (solicitud.operacion() == "log.consultar" ||
         solicitud.operacion() == "informe.usuarios") {
         if (solicitante.rol != Rol::ADMINISTRADOR)
@@ -112,10 +160,6 @@ MensajeRPC ServicioProtegido::atenderInterno(
             }
         }
         try {
-            auto enteroRpc = [](std::size_t n) -> std::int32_t {
-                const auto maximo = static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max());
-                return static_cast<std::int32_t>(n > maximo ? maximo : n);
-            };
             if (!esLog) {
                 const auto resumen = registro_->informeUsuarios(filtro);
                 ValorRPC::Arreglo usuarios;

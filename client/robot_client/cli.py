@@ -28,6 +28,26 @@ class CliCliente:
     @staticmethod
     def mostrar(respuesta):
         datos = respuesta.resultado
+        if respuesta.codigo == "OK" and respuesta.operacion == "informe.propio":
+            print(f"[OK] Actividad propia de {datos['usuario']} (UTC)")
+            referencia = {"inicio": "inicio del servidor (sin conexion posterior)",
+                          "conectar": "ultima conexion del robot"}.get(
+                              datos['referencia'], "sin referencia disponible")
+            print(f"Periodo: {referencia} | "
+                  f"{datos['desde'] or 'fecha no disponible'}")
+            print(f"Inicio de actividad propia: {datos['inicio_actividad'] or 'sin actividad'}")
+            print(f"Peticiones: {datos['total']} | Errores: {datos['errores']} | "
+                  f"Mostradas: {datos['mostrados']} | Offset: {datos['offset']}")
+            print(f"Estado del robot [{datos['codigo_estado']}]:")
+            CliCliente.mostrar_datos(datos['estado'], 2)
+            if not datos['total']:
+                print("Sin actividad propia en este periodo.")
+            elif not datos['registros']:
+                print("No hay registros en esta pagina; revise el offset.")
+            for fila in datos['registros']:
+                print(f"{fila['fecha_hora']} | {fila['id_solicitud']} | "
+                      f"{fila['operacion']} | {fila['codigo']} | {fila['detalle']}")
+            return
         if respuesta.codigo == "OK" and respuesta.operacion == "informe.usuarios":
             print(f"[OK] Peticiones: {datos.get('total_peticiones', 0)}  "
                   f"Correctas: {datos.get('total_ok', 0)}  "
@@ -109,6 +129,7 @@ class CliCliente:
                   "\n16. Desactivar efector (abrir pinza)"
                   "\n17. Subir archivo de tarea (sin ejecutar)"
                   "\n18. Listar tareas disponibles"
+                  "\n21. Consultar mi actividad"
                   "\n0. Salir")
             opcion = input("Opcion: ").strip()
             if opcion == "0":
@@ -171,6 +192,10 @@ class CliCliente:
                     self.mostrar(self.servicios.subir_archivo(input("Ruta del archivo local: ").strip()))
                 elif opcion == "18":
                     self.mostrar(self.servicios.listar_tareas())
+                elif opcion == "21":
+                    offset = int(input("Offset (Enter=0): ").strip() or "0")
+                    limite = int(input("Limite (Enter=50, maximo 100): ").strip() or "50")
+                    self.mostrar(self.servicios.actividad_propia(offset, limite))
                 elif opcion in ("19", "20"):
                     usuario = input("Usuario (Enter=todos): ").strip()
                     desde = input("Desde AAAA-MM-DD (Enter=sin limite): ").strip()
@@ -233,6 +258,9 @@ def main(argv=None):
     subir = comandos.add_parser("subir", help="Almacenar un archivo G-Code sin ejecutarlo")
     subir.add_argument("ruta", help="Ruta del archivo local UTF-8")
     comandos.add_parser("tareas", help="Listar tareas segun propietario y rol")
+    actividad = comandos.add_parser("actividad", help="Consultar mi actividad desde la ultima conexion")
+    actividad.add_argument("--offset", type=int, default=0)
+    actividad.add_argument("--limite", type=int, default=50)
     informes = comandos.add_parser("informe-usuarios", help="Informe global (administrador)")
     log = comandos.add_parser("log", help="Consultar el CSV (administrador)")
     for p in (informes, log):
@@ -278,6 +306,8 @@ def main(argv=None):
             respuesta = servicios.subir_archivo(args.ruta)
         elif args.comando == "tareas":
             respuesta = servicios.listar_tareas()
+        elif args.comando == "actividad":
+            respuesta = servicios.actividad_propia(args.offset, args.limite)
         elif args.comando == "informe-usuarios":
             respuesta = servicios.informe_usuarios(
                 args.usuario, args.desde, args.hasta, args.codigo)

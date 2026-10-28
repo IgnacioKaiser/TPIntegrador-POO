@@ -41,6 +41,47 @@ int main() {
         bool fallo = false;
         try { log.consultar(fechas); } catch (const std::invalid_argument&) { fallo = true; }
         assert(fallo);
+        // US-19: aislamiento y periodo en orden de archivo, aun en el mismo segundo.
+        assert(log.actividadPropia("nadie").pagina.total == 0);
+        assert(log.actividadPropia("hector").pagina.total == 1);
+        assert(log.actividadPropia("martin").errores == 1);
+        log.registrarEvento("Robot", "conectar", "OK", "Conexion de prueba");
+        assert(log.actividadPropia("hector").pagina.total == 0);
+        log.registrarPeticion("uno", "hector", "127.0.0.1", "mover", "VALIDACION");
+        log.registrarPeticion("otro", "martin", "127.0.0.1", "ping", "OK");
+        log.registrarPeticion("dos", "hector", "127.0.0.1", "estado", "OK");
+        log.registrarEvento("Robot", "conectar", "OK", "Ya estaba conectado; no reinicia periodo");
+        log.registrarEvento("Robot", "conectar", "PERMISO_DENEGADO", "Rechazo");
+        log.registrarEvento("Robot", "desconectar", "OK", "Desconexion");
+        const auto propia = log.actividadPropia("hector", 1, 1);
+        assert(propia.referencia == "conectar" && !propia.desde.empty());
+        assert(!propia.inicio_actividad.empty());
+        assert(propia.pagina.total == 2 && propia.errores == 1);
+        assert(propia.pagina.registros.size() == 1);
+        assert(propia.pagina.registros[0].id_solicitud == "dos");
+        assert(log.actividadPropia("hector", 2).pagina.registros.empty());
+        log.registrarEvento("Robot", "conectar", "OK", "Reconectar tras desconexion");
+        assert(log.actividadPropia("hector").pagina.total == 0);
+        assert(log.informeUsuarios(todos)[0].peticiones == 3); // Global sigue acumulativo.
+        for (const auto limite : {std::size_t(0), std::size_t(101)}) {
+            fallo = false;
+            try { log.actividadPropia("hector", 0, limite); }
+            catch (const std::invalid_argument&) { fallo = true; }
+            assert(fallo);
+        }
+        fallo = false;
+        try { log.actividadPropia("hector", 100000001); }
+        catch (const std::invalid_argument&) { fallo = true; }
+        assert(fallo);
+        fallo = false;
+        try { log.actividadPropia(""); }
+        catch (const std::invalid_argument&) { fallo = true; }
+        assert(fallo);
+        log.registrarEvento("ServidorRPC", "inicio", "OK", "Reinicio");
+        const auto reinicio = log.actividadPropia("hector");
+        assert(reinicio.referencia == "inicio" && reinicio.inicio_actividad.empty());
+        assert(reinicio.pagina.total == 0 && reinicio.errores == 0);
+        std::cout << "US-19: propiedad, periodo, paginacion, errores y reinicio OK\n";
         std::cout << "US-18/20/21: pruebas CSV, fechas, filtros y persistencia OK\n";
     } catch (...) {
         fs::remove_all(base);
