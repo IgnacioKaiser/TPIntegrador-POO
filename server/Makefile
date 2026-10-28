@@ -59,7 +59,7 @@ USER_DEPS := build/src/usuarios/autenticador.d build/src/usuarios/servicio_prote
 DEPS := $(RPC_OBJECTS:.o=.d) $(LOG_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) \
 	build/tests/test_domain.d $(USER_DEPS) $(TAREAS_OBJECTS:.o=.d) build/tests/test_tareas.d
 
-.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion test-tareas usuarios clean
+.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion test-tareas test-registro usuarios clean
 all: $(SERVER) libraries $(USER_TOOL)
 libraries: $(RPC_LIB) $(LOG_LIB)
 
@@ -83,7 +83,7 @@ build/examples/%$(EXE): xmlrpc/examples/%.cpp $(RPC_LIB)
 test-unit: $(DOMAIN_TEST)
 	$(ejecutar_prueba)
 	$(prueba_python) -m unittest discover -s $(call argumento_ruta,../client/tests) -v
-test: all test-unit test-usuarios test-autenticacion test-tareas
+test: all test-unit test-usuarios test-autenticacion test-tareas test-registro
 	$(prueba_python) -m unittest discover -s tests -p "test_integration.py" -v
 usuarios: $(USER_TOOL)
 $(USER_TOOL): build/tools/usuarios_admin.o $(USER_OBJECTS)
@@ -92,7 +92,7 @@ $(USER_TEST): build/tests/test_usuarios.o $(USER_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(USER_LIBS)
 test-usuarios: $(USER_TOOL) $(USER_TEST)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_usuarios.py)
-build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
+build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src/registro_actividad.o build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(USER_LIBS)
 test-autenticacion: build/test_autenticacion$(EXE)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_autenticacion.py)
@@ -100,6 +100,11 @@ $(TAREAS_TEST): build/tests/test_tareas.o $(TAREAS_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS)
 test-tareas: $(TAREAS_TEST)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_tareas.py)
+REGISTRO_TEST := build/test_registro_actividad$(EXE)
+$(REGISTRO_TEST): build/tests/test_registro_actividad.o build/src/registro_actividad.o
+	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS)
+test-registro: $(REGISTRO_TEST)
+	$(if $(filter Windows_NT,$(OS)),$(if $(MSYSTEM),./$(REGISTRO_TEST),.\$(subst /,\,$(REGISTRO_TEST))),./$(REGISTRO_TEST))
 clean:
 	$(limpiar)
 -include $(DEPS)

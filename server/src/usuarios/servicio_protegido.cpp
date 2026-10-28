@@ -1,6 +1,10 @@
 #include "robotrpc/servicio_protegido.hpp"
 #include <string>
 #include <variant>
+#include <cstdint>
+#include <iostream>
+#include <limits>
+#include <set>
 
 namespace robotrpc {
 namespace {
@@ -27,12 +31,44 @@ EstructuraRPC datosTarea(const Tarea& tarea, const std::string& propietario) {
 } // namespace
 
 MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
+    std::string usuarioVerificado;
+    try {
+        MensajeRPC respuesta = atenderInterno(solicitud, usuarioVerificado);
+        if (registro_) {
+            try {
+                // La escucha actual es exclusivamente por loopback.
+                // Nunca tomar el usuario declarado como identidad verificada.
+                registro_->registrarPeticion(solicitud.id(), usuarioVerificado,
+                    "127.0.0.1", solicitud.operacion(), respuesta.codigo());
+                if (solicitud.operacion() == "conectar" ||
+                    solicitud.operacion() == "desconectar")
+                    registro_->registrarEvento("Robot", solicitud.operacion(),
+                        respuesta.codigo(), "Resultado de operacion de conexion serie");
+            } catch (const std::exception& e) {
+                std::cerr << "Advertencia: no se pudo registrar actividad: " << e.what() << '\n';
+            }
+        }
+        return respuesta;
+    } catch (...) {
+        if (registro_) {
+            try {
+                registro_->registrarPeticion(solicitud.id(), usuarioVerificado,
+                    "127.0.0.1", solicitud.operacion(), "ERROR_INTERNO");
+            } catch (...) { /* Se mantiene el error original. */ }
+        }
+        throw;
+    }
+}
+
+MensajeRPC ServicioProtegido::atenderInterno(
+    const MensajeRPC& solicitud, std::string& usuarioVerificado) const {
     if (solicitud.tipo() != "solicitud")
         throw MensajeInvalido("El servidor recibe solicitudes, no respuestas.");
 
     Usuario solicitante;
     try {
         solicitante = autenticador_.validar(solicitud);
+        usuarioVerificado = solicitante.nombre;
     } catch (const ErrorAutenticacion& e) {
         return error(solicitud, e.codigo(), e.what());
     } catch (const ErrorUsuarios&) {
@@ -43,6 +79,74 @@ MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
     auto parametros = solicitud.parametros();
     parametros.erase("credenciales");
     const auto limpia = MensajeRPC::solicitud(solicitud.id(), solicitud.operacion(), parametros);
+    if (solicitud.operacion() == "log.consultar" ||
+        solicitud.operacion() == "informe.usuarios") {
+        if (solicitante.rol != Rol::ADMINISTRADOR)
+            return error(solicitud, "PERMISO_DENEGADO",
+                         "Solo el administrador puede consultar logs e informes.");
+        if (!registro_)
+            return error(solicitud, "ERROR_INTERNO", "Registro no configurado.");
+
+        const bool esLog = solicitud.operacion() == "log.consultar";
+        const std::set<std::string> permitidos = esLog
+            ? std::set<std::string>{"usuario", "desde", "hasta", "tipo", "codigo", "offset", "limite"}
+            : std::set<std::string>{"usuario", "desde", "hasta", "codigo"};
+        FiltroActividad filtro;
+        for (const auto& campo : parametros) {
+            if (!permitidos.count(campo.first))
+                return error(solicitud, "VALIDACION", "Filtro desconocido: " + campo.first);
+            if (campo.first == "offset" || campo.first == "limite") {
+                const auto* n = std::get_if<std::int32_t>(&campo.second.dato());
+                if (!n || *n < 0)
+                    return error(solicitud, "VALIDACION", "offset y limite deben ser enteros no negativos.");
+                if (campo.first == "offset") filtro.offset = static_cast<std::size_t>(*n);
+                else filtro.limite = static_cast<std::size_t>(*n);
+            } else {
+                const auto* s = std::get_if<std::string>(&campo.second.dato());
+                if (!s) return error(solicitud, "VALIDACION", "Los filtros deben ser texto.");
+                if (campo.first == "usuario") filtro.usuario = *s;
+                else if (campo.first == "desde") filtro.desde = *s;
+                else if (campo.first == "hasta") filtro.hasta = *s;
+                else if (campo.first == "tipo") filtro.tipo = *s;
+                else if (campo.first == "codigo") filtro.codigo = *s;
+            }
+        }
+        try {
+            auto enteroRpc = [](std::size_t n) -> std::int32_t {
+                const auto maximo = static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max());
+                return static_cast<std::int32_t>(n > maximo ? maximo : n);
+            };
+            if (!esLog) {
+                const auto resumen = registro_->informeUsuarios(filtro);
+                ValorRPC::Arreglo usuarios;
+                std::size_t total = 0, exitosas = 0, rechazadas = 0;
+                for (const auto& r : resumen) {
+                    usuarios.emplace_back(EstructuraRPC{
+                        {"usuario", r.usuario}, {"peticiones", enteroRpc(r.peticiones)},
+                        {"exitosas", enteroRpc(r.exitosas)}, {"rechazadas", enteroRpc(r.rechazadas)}});
+                    total += r.peticiones; exitosas += r.exitosas; rechazadas += r.rechazadas;
+                }
+                return MensajeRPC::respuestaA(solicitud,
+                    {{"usuarios", usuarios}, {"total_peticiones", enteroRpc(total)},
+                     {"total_ok", enteroRpc(exitosas)}, {"total_errores", enteroRpc(rechazadas)}});
+            }
+            const auto pagina = registro_->consultar(filtro);
+            ValorRPC::Arreglo registros;
+            for (const auto& r : pagina.registros) {
+                registros.emplace_back(EstructuraRPC{
+                    {"fecha_hora",r.fecha_hora}, {"tipo",r.tipo}, {"id_solicitud",r.id_solicitud},
+                    {"usuario",r.usuario}, {"nodo_cliente",r.nodo_cliente}, {"modulo",r.modulo},
+                    {"operacion",r.operacion}, {"codigo",r.codigo}, {"detalle",r.detalle}});
+            }
+            return MensajeRPC::respuestaA(solicitud,
+                {{"registros", registros}, {"total", enteroRpc(pagina.total)},
+                 {"offset", enteroRpc(filtro.offset)}, {"mostrados", enteroRpc(registros.size())}});
+        } catch (const std::invalid_argument& e) {
+            return error(solicitud, "VALIDACION", e.what());
+        } catch (const std::exception&) {
+            return error(solicitud, "ERROR_INTERNO", "No se pudo consultar el CSV de actividad.");
+        }
+    }
 
     if (solicitud.operacion() == "tarea.subir" || solicitud.operacion() == "tarea.listar") {
         try {

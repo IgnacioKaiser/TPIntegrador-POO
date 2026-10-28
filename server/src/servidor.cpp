@@ -9,10 +9,17 @@
 #endif
 #include <csignal>
 #include <iostream>
+#include <filesystem>
 #include <string>
 
 namespace robotrpc {
 namespace {
+// Las pruebas con --db temporal no comparten el log real del equipo.
+std::string rutaActividad(const std::string& rutaUsuarios) {
+    if (rutaUsuarios == "data/db/usuarios.sqlite") return "data/logs/actividad.csv";
+    return (std::filesystem::path(rutaUsuarios).parent_path() / "actividad.csv").string();
+}
+
 
 volatile std::sig_atomic_t detener = 0;
 
@@ -98,7 +105,8 @@ ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto, const std::string& ruta,
                                const std::string& directorioTareas)
     : puerto_(puerto), usuarios_(ruta), autenticador_(usuarios_),
       robot_(), servicio_(robot_), tareas_(directorioTareas),
-      protegido_(autenticador_, servicio_, usuarios_, tareas_) {
+       registro_(rutaActividad(ruta)),
+       protegido_(autenticador_, servicio_, usuarios_, tareas_, &registro_) {
     int administradores = 0;
     for (const auto& usuario : usuarios_.listar())
         if (usuario.rol == Rol::ADMINISTRADOR && usuario.habilitado) ++administradores;
@@ -115,6 +123,7 @@ void ServidorXmlRpc::ejecutar() {
     XmlRpc::setVerbosity(0);
     XmlRpc::XmlRpcValue::setDoubleFormat("%.17g");
     servidor.abrir(puerto_);
+    registro_.registrarEvento("ServidorRPC", "inicio", "OK", "Servidor XML-RPC iniciado");
     detener = 0;
     if (std::signal(SIGINT, solicitarCierre) == SIG_ERR ||
         std::signal(SIGTERM, solicitarCierre) == SIG_ERR)
@@ -130,6 +139,7 @@ void ServidorXmlRpc::ejecutar() {
               << std::endl;
     while (!detener)
         servidor.work(0.1);
+    registro_.registrarEvento("ServidorRPC", "cierre", "OK", "Servidor XML-RPC cerrado");
     servidor.shutdown();
     std::cout << "Servidor cerrado." << std::endl;
 }

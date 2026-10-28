@@ -24,6 +24,7 @@ private:
     Robot robot_;
     ServicioRobot servicio_;
     RepositorioTareas tareas_;
+    RegistroActividadCsv registro_;
     ServicioProtegido protegido_;
 };
 

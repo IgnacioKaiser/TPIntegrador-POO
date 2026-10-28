@@ -126,6 +126,19 @@ class ServiciosPrueba:
     def listar_tareas(self) -> MensajeRPC:
         return self._enviar("tarea.listar")
 
+    def informe_usuarios(self, usuario="", desde="", hasta="", codigo="") -> MensajeRPC:
+        datos = {k: v for k, v in {"usuario": usuario, "desde": desde,
+                                  "hasta": hasta, "codigo": codigo}.items() if v}
+        return self._enviar("informe.usuarios", datos)
+
+    def consultar_log(self, usuario="", desde="", hasta="", tipo="", codigo="",
+                      offset=0, limite=50) -> MensajeRPC:
+        datos = {k: v for k, v in {"usuario": usuario, "desde": desde, "hasta": hasta,
+                                  "tipo": tipo, "codigo": codigo}.items() if v}
+        datos["offset"] = offset
+        datos["limite"] = limite
+        return self._enviar("log.consultar", datos)
+
     def conectar(self, puerto: str | None = None) -> MensajeRPC:
         # Al omitir puerto, el servidor elige el predeterminado de su sistema.
         parametros = {} if puerto is None else {"puerto": puerto}

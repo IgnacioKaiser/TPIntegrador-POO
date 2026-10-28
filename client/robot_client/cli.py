@@ -28,6 +28,23 @@ class CliCliente:
     @staticmethod
     def mostrar(respuesta):
         datos = respuesta.resultado
+        if respuesta.codigo == "OK" and respuesta.operacion == "informe.usuarios":
+            print(f"[OK] Peticiones: {datos.get('total_peticiones', 0)}  "
+                  f"Correctas: {datos.get('total_ok', 0)}  "
+                  f"Rechazadas: {datos.get('total_errores', 0)}")
+            print("Usuario | Peticiones | OK | Errores")
+            for fila in datos.get("usuarios", []):
+                print(f"{fila['usuario']} | {fila['peticiones']} | "
+                      f"{fila['exitosas']} | {fila['rechazadas']}")
+            return
+        if respuesta.codigo == "OK" and respuesta.operacion == "log.consultar":
+            print(f"[OK] {datos.get('mostrados', 0)} de {datos.get('total', 0)} "
+                  "entradas (UTC)")
+            for fila in datos.get("registros", []):
+                print(f"{fila['fecha_hora']} | {fila['tipo']} | "
+                      f"{fila['usuario'] or '(sin autenticar)'} | {fila['operacion']} | "
+                      f"{fila['codigo']} | {fila['detalle']}")
+            return
         if respuesta.operacion == "tarea.listar" and respuesta.codigo == "OK":
             tareas = datos.get("tareas")
             if not isinstance(tareas, list) or any(
@@ -78,6 +95,8 @@ class CliCliente:
                       "\n4. Deshabilitar operador (solo administrador)"
                       "\n5. Conectar robot (solo administrador)"
                       "\n6. Desconectar robot (solo administrador)")
+                print("19. Informe de usuarios (solo administrador)"
+                      "\n20. Consultar log CSV (solo administrador)")
             print("7. Consultar estado del robot"
                   "\n8. Activar motores"
                   "\n9. Desactivar motores"
@@ -95,7 +114,7 @@ class CliCliente:
             if opcion == "0":
                 return 0
             # Ocultar opciones no reemplaza los permisos comprobados por el servidor.
-            if opcion in ("3", "4", "5", "6") and not administrador:
+            if opcion in ("3", "4", "5", "6", "19", "20") and not administrador:
                 print("Opcion no disponible para este perfil.")
                 continue
             try:
@@ -152,6 +171,16 @@ class CliCliente:
                     self.mostrar(self.servicios.subir_archivo(input("Ruta del archivo local: ").strip()))
                 elif opcion == "18":
                     self.mostrar(self.servicios.listar_tareas())
+                elif opcion in ("19", "20"):
+                    usuario = input("Usuario (Enter=todos): ").strip()
+                    desde = input("Desde AAAA-MM-DD (Enter=sin limite): ").strip()
+                    hasta = input("Hasta AAAA-MM-DD (Enter=sin limite): ").strip()
+                    codigo = input("Codigo (Enter=todos): ").strip().upper()
+                    if opcion == "19":
+                        self.mostrar(self.servicios.informe_usuarios(usuario, desde, hasta, codigo))
+                    else:
+                        tipo = input("Tipo PETICION/EVENTO (Enter=todos): ").strip().upper()
+                        self.mostrar(self.servicios.consultar_log(usuario, desde, hasta, tipo, codigo))
                 else:
                     print("Opcion invalida.")
             except (ErrorComunicacion, MensajeInvalido, ValueError) as error:
@@ -204,6 +233,16 @@ def main(argv=None):
     subir = comandos.add_parser("subir", help="Almacenar un archivo G-Code sin ejecutarlo")
     subir.add_argument("ruta", help="Ruta del archivo local UTF-8")
     comandos.add_parser("tareas", help="Listar tareas segun propietario y rol")
+    informes = comandos.add_parser("informe-usuarios", help="Informe global (administrador)")
+    log = comandos.add_parser("log", help="Consultar el CSV (administrador)")
+    for p in (informes, log):
+        p.add_argument("--usuario", default="")
+        p.add_argument("--desde", default="", help="Fecha UTC AAAA-MM-DD")
+        p.add_argument("--hasta", default="", help="Fecha UTC AAAA-MM-DD")
+        p.add_argument("--codigo", default="")
+    log.add_argument("--tipo", default="", choices=("", "PETICION", "EVENTO"))
+    log.add_argument("--limite", type=int, default=50)
+    log.add_argument("--offset", type=int, default=0)
     args = parser.parse_args(argv)
     try:
         usuario = input("Usuario: ").strip()
@@ -239,6 +278,13 @@ def main(argv=None):
             respuesta = servicios.subir_archivo(args.ruta)
         elif args.comando == "tareas":
             respuesta = servicios.listar_tareas()
+        elif args.comando == "informe-usuarios":
+            respuesta = servicios.informe_usuarios(
+                args.usuario, args.desde, args.hasta, args.codigo)
+        elif args.comando == "log":
+            respuesta = servicios.consultar_log(
+                args.usuario, args.desde, args.hasta, args.tipo,
+                args.codigo, args.offset, args.limite)
         elif args.comando in ("desconectar", "estado", "activar_motores",
                               "desactivar_motores", "ayuda"):
             # Los nombres del comando y del metodo coinciden con el contrato.
