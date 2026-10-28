@@ -120,10 +120,11 @@ comando permitió recibir `HOMING COMPLETE` y `OK`. El firmware de simulación
 define `SIMULATION=true` y compila sin escrituras a los pines de motores y
 pinza.
 
-La respuesta `M114` no incluyó la línea de posición esperada. Por eso `G1` no
-se envió desde `Robot::mover`: no se debe validar una trayectoria sin conocer
-el punto actual, en especial en modo relativo. La prueba de movimiento queda
-pendiente hasta que el firmware entregue coordenadas interpretables.
+En la verificación inicial del 27/10, `M114` no incluyó la línea de posición
+esperada y `G1` no se envió desde `Robot::mover`. En la reverificación del
+28/10, `M114` informó una posición interpretable y se confirmó un movimiento
+simulado de 1 mm y su retorno. Los resultados están registrados en
+`docs/backlog/US-12.md` y `docs/VERIFICACION.md`.
 
 ## D09. Primer avance US-23 sin consulta de permisos (historico; actualizado por D10)
 

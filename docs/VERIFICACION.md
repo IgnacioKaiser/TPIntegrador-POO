@@ -34,12 +34,12 @@ Se conectó `ServicioRobot` al servidor, se agregó `Robot.cpp` a la compilació
 
 Las pruebas cubren la validación de parámetros, el estado explícito cuando el robot está desconectado, los datos no disponibles, la ayuda sin comandos de movimiento y el rechazo de un puerto serie inexistente. No se verificó la ejecución de movimientos sobre el robot.
 
-Según el registro incorporado desde ConState, se verificó físicamente el 27 de octubre
-de 2026 con el Arduino en `COM5`: conectar, consultar `M114` y desconectar respondieron
-`OK`. El firmware informó modo absoluto, motores desactivados y ventilador desactivado;
-la posición se devolvió como no disponible por no contener `CURRENT POSITION`.
-No se enviaron comandos de activación de motores ni de movimiento. No se repitió esa
-prueba física en US-23. La autenticación y autorización por rol ya están implementadas
+Según el registro incorporado desde ConState, el 27 de octubre de 2026 se verificó
+la comunicación con el Arduino en `COM5`: conectar, consultar `M114` y desconectar
+respondieron `OK`. El firmware informó modo absoluto, motores desactivados y
+ventilador desactivado; la posición se devolvió como no disponible por no contener
+`CURRENT POSITION`. No se enviaron comandos de activación de motores ni de movimiento.
+La autenticación y autorización por rol ya están implementadas
 en ServicioProtegido; US-23 agrega la consulta de identidad para el menú.
 
 ## Integracion de US-10 a US-13 con US-23 (27 de octubre de 2026)
@@ -56,6 +56,25 @@ En Windows con MSYS2 UCRT64 y Python 3.14 se verificaron los cambios combinados:
 
 Las pruebas validan la consulta de identidad, permisos administrativos, ambos modos,
 las operaciones manuales y respuestas cuando el robot esta desconectado. No se
-envio un movimiento al Arduino: `M114` no entrega la posicion que requiere la
-validacion segura de `G1`. La prueba previa en COM5 corresponde al firmware de
-simulacion y no demuestra movimiento fisico.
+envio un movimiento al Arduino en esa verificacion del 27/10: `M114` no entregaba
+la posicion que requiere la validacion segura de `G1`. La prueba previa en COM5
+corresponde al firmware de simulacion y no demuestra movimiento fisico.
+
+## Reverificacion con posicion y movimiento (28 de octubre de 2026)
+
+Entorno: Windows, MSYS2 UCRT64, Python 3.14 y Arduino CH340 en COM5. El primer
+intento devolvió `ERROR_CONEXION`; después de que el usuario liberó el puerto,
+la conexión desde el servidor temporal respondió correctamente. Se usó una base
+SQLite temporal y un puerto RPC efímero; no se tocó la base real de usuarios.
+
+`estado` recibió `M114` y expuso X=0, Y=170, Z=120 mm. En modo manual y
+coordenadas absolutas, `mover` ejecutó un `G1` de 1 mm en X a 5 mm/s. El estado
+posterior confirmó X=1, Y=170, Z=120 mm; se envió el retorno a X=0 y otro `M114`
+confirmó la posición inicial. El cliente y el servidor terminaron correctamente,
+desconectando COM5.
+
+También se ejecutaron por separado en esta revisión: compilación `make all`,
+comprobaciones de dominio C++, 33 pruebas Python del cliente, pruebas de usuarios,
+pruebas de autenticación y 27 pruebas XML-RPC contra el servidor C++ real. Todos
+los grupos pasaron. El firmware del repositorio define `SIMULATION=true`; esta
+prueba confirma el flujo de aplicación y la posición simulada, no movimiento físico.

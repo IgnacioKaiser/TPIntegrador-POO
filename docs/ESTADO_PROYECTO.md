@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Fecha de revision: 27/10/2026. Rama de trabajo: `ControlManual`.
+Fecha de revision: 28/10/2026. Rama de trabajo: `ControlManual`.
 Integra el control manual de US-10 a US-13 con identidad, autorizacion y menu
 por rol de US-23, además de las operaciones de robot de US-06 a US-09.
 Este documento es una fotografia, no una declaracion permanente. Antes de una nueva tarea, verificar el commit actual y actualizar lo que cambio.
@@ -14,7 +14,7 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - US-04: SQLite para usuarios y roles; credenciales con libsodium. Herramienta usuarios_admin para inicializar, agregar y listar. Pruebas y uso manual verificados por el equipo en Windows.
 - US-03: Autenticador y ServicioProtegido validan cada solicitud. Pruebas originales del dominio (15), cliente Python (10), usuarios, autenticacion e integracion (18 en ese hito) correctas en Windows segun salidas del equipo. No asumir que esos conteos permanecen iguales tras nuevos cambios.
 - US-06 a US-09: la base local `0add6a5` ya incluye conexion serie, consulta de estado, comandos de motores y ayuda. No se infiere que el commit por si solo certifique pruebas con Arduino.
-- US-10 a US-13: modos, origen y pinza verificados con el Arduino simulado en COM5 (CH340); `G28`, `M3`, `M5`, `G90` y `G91` respondieron correctamente. La consulta serie detectó que `M114` no devuelve sus coordenadas, por lo que `G1` aún no se puede validar con `Robot::mover` y no se envió. En Windows/MSYS2 también pasaron las pruebas C++ de dominio, las 17 de cliente, las temporales de usuarios/autenticación y las 24 de integración XML-RPC. La simulación no verifica movimiento físico.
+- US-10 a US-13: modos, origen y pinza verificados con el Arduino simulado en COM5 (CH340). El 28/10, `M114` informó X=0, Y=170, Z=120 mm; desde el cliente Python y el servidor C++ se envió un `G1` de 1 mm en X a 5 mm/s, se confirmó el destino con `M114` y se retornó a la posición inicial. Pasaron en Windows/MSYS2 UCRT64 la compilación, dominio C++, 33 pruebas de cliente, pruebas temporales de usuarios y autenticación y 27 pruebas de integración XML-RPC. El firmware tiene `SIMULATION=true`: esto verifica la comunicación y el estado simulado, no movimiento físico.
 - US-05: integrado en master mediante PR #1. Agrega usuario.habilitar y usuario.deshabilitar para administradores. Sus pruebas de cliente, usuarios y autenticacion se ejecutaron nuevamente con la suite completa de esta etapa.
 - US-23 (avance integrado en la rama de trabajo): cliente con conectar (puerto opcional),
   desconectar, estado, activar_motores, desactivar_motores y ayuda, por terminal y menu.
@@ -25,11 +25,13 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
   dominio, usuarios, autenticacion, 33 pruebas del cliente simuladas y 27 de integracion
   con el ejecutable C++ real y bases temporales. El usuario verifico manualmente
   contra el servidor real ayuda, ping, estado desconectado y rechazo de ambos comandos
-  de motores sin conexion; el menu continua correctamente. Sin verificacion de Arduino.
+  de motores sin conexion; el menu continua correctamente. Esa etapa inicial no
+  verifico el cliente con Arduino; la reverificacion del 28/10 cubrio `estado` y
+  `mover` contra el simulador mediante el servicio del cliente.
   Tambien verifico conexion fallida como administrador y rechazo de conectar como
   operador. Desconexion, permisos, identidad, cuenta deshabilitada y clave incorrecta
   estan cubiertos por las pruebas automaticas reales.
-  La simulacion no verifica movimiento fisico ni se ha probado el cliente contra Arduino.
+  La simulacion no verifica movimiento fisico.
   La US-23 completa sigue abierta. Ver backlog/US-23.md.
 
 ## Arquitectura vigente
