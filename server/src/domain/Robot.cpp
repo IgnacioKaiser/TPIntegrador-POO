@@ -1,152 +1,24 @@
 #include "domain/Robot.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
-#include <cstring>
 #include <iomanip>
 #include <regex>
 #include <sstream>
-#include <thread>
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <cerrno>
-#include <fcntl.h>
-#include <termios.h>
-#include <unistd.h>
-#endif
+#include <locale>
 
 Robot::Robot()
-    : fd_serie(-1),
-      conectado(false),
-      modoTrabajo_(ModoTrabajo::MANUAL),
+    : canal_(puerto_), modoTrabajo_(ModoTrabajo::MANUAL),
       modoCoordenadas_(ModoCoordenadas::ABSOLUTO) {}
 
-Robot::~Robot() {
-    desconectar();
-}
+Robot::Robot(CanalSerie& canal)
+    : canal_(canal), modoTrabajo_(ModoTrabajo::MANUAL),
+      modoCoordenadas_(ModoCoordenadas::ABSOLUTO) {}
 
-bool Robot::conectar(const std::string& puerto) {
-    if (conectado) return true;
-
-#ifdef _WIN32
-    std::string nombrePuerto = puerto;
-    if (nombrePuerto.size() >= 4 &&
-        nombrePuerto.compare(0, 3, "COM") == 0 &&
-        nombrePuerto[3] >= '0' && nombrePuerto[3] <= '9') {
-        nombrePuerto = "\\\\.\\" + nombrePuerto;
-    }
-
-    HANDLE puertoAbierto = CreateFileA(
-        nombrePuerto.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-        OPEN_EXISTING, 0, nullptr);
-    if (puertoAbierto == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-
-    DCB configuracion{};
-    configuracion.DCBlength = sizeof(configuracion);
-    if (!GetCommState(puertoAbierto, &configuracion)) {
-        CloseHandle(puertoAbierto);
-        return false;
-    }
-    configuracion.BaudRate = CBR_115200;
-    configuracion.ByteSize = 8;
-    configuracion.Parity = NOPARITY;
-    configuracion.StopBits = ONESTOPBIT;
-    configuracion.fBinary = TRUE;
-    configuracion.fOutxCtsFlow = FALSE;
-    configuracion.fOutxDsrFlow = FALSE;
-    configuracion.fDtrControl = DTR_CONTROL_ENABLE;
-    configuracion.fRtsControl = RTS_CONTROL_DISABLE;
-    configuracion.fOutX = FALSE;
-    configuracion.fInX = FALSE;
-    if (!SetCommState(puertoAbierto, &configuracion)) {
-        CloseHandle(puertoAbierto);
-        return false;
-    }
-
-    COMMTIMEOUTS timeouts{};
-    timeouts.ReadIntervalTimeout = 50;
-    timeouts.ReadTotalTimeoutConstant = 1000;
-    timeouts.WriteTotalTimeoutConstant = 1000;
-    if (!SetCommTimeouts(puertoAbierto, &timeouts) ||
-        !SetupComm(puertoAbierto, 4096, 4096)) {
-        CloseHandle(puertoAbierto);
-        return false;
-    }
-    fd_serie = reinterpret_cast<std::intptr_t>(puertoAbierto);
-#else
-    const int puertoAbierto =
-        open(puerto.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
-    if (puertoAbierto < 0)
-        return false;
-
-    struct termios tty;
-    if (tcgetattr(puertoAbierto, &tty) != 0) {
-        close(puertoAbierto);
-        return false;
-    }
-
-    cfsetospeed(&tty, B115200);
-    cfsetispeed(&tty, B115200);
-    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~(PARENB | PARODD);
-    tty.c_cflag &= ~CSTOPB;
-    tty.c_cflag &= ~CRTSCTS;
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY | ICRNL | INLCR | IGNCR);
-    tty.c_oflag &= ~(OPOST | ONLCR | OCRNL);
-    tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
-    tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 10;
-
-    if (tcsetattr(puertoAbierto, TCSANOW, &tty) != 0) {
-        close(puertoAbierto);
-        return false;
-    }
-    fd_serie = puertoAbierto;
-#endif
-
-    conectado = true;
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-#ifdef _WIN32
-    if (!PurgeComm(reinterpret_cast<HANDLE>(fd_serie),
-                   PURGE_RXCLEAR | PURGE_TXCLEAR)) {
-        cerrarPuerto();
-        return false;
-    }
-#else
-    if (tcflush(static_cast<int>(fd_serie), TCIOFLUSH) != 0) {
-        cerrarPuerto();
-        return false;
-    }
-#endif
-    return true;
-}
-
-void Robot::desconectar() {
-    cerrarPuerto();
-}
-
-void Robot::cerrarPuerto() {
-    if (fd_serie < 0)
-        return;
-#ifdef _WIN32
-    CloseHandle(reinterpret_cast<HANDLE>(fd_serie));
-#else
-    close(static_cast<int>(fd_serie));
-#endif
-    fd_serie = -1;
-    conectado = false;
-}
-
-bool Robot::estaConectado() const {
-    return conectado;
-}
+Robot::~Robot() { desconectar(); }
+bool Robot::conectar(const std::string& puerto) { return canal_.conectar(puerto); }
+void Robot::desconectar() { canal_.desconectar(); }
+bool Robot::estaConectado() const { return canal_.estaConectado(); }
 
 // Implementación sugerida por la cátedra para limpiar saltos de línea
 std::string Robot::limpiarRespuesta(const std::string& raw) const {
@@ -156,125 +28,14 @@ std::string Robot::limpiarRespuesta(const std::string& raw) const {
     return r;
 }
 
-std::string Robot::leerRespuesta(unsigned int timeoutMs) {
-    std::string respuesta;
-    std::string linea;
-    char buffer[256];
-    const auto limite =
-        std::chrono::steady_clock::now() +
-        std::chrono::milliseconds(timeoutMs);
-
-    while (true) {
-#ifdef _WIN32
-        DWORD cantidad = 0;
-        if (!ReadFile(reinterpret_cast<HANDLE>(fd_serie), buffer,
-                      sizeof(buffer), &cantidad, nullptr)) {
-            cerrarPuerto();
-            throw std::runtime_error("Error de I/O al leer el puerto serie.");
-        }
-        const int n = static_cast<int>(cantidad);
-#else
-        const ssize_t n = read(static_cast<int>(fd_serie), buffer,
-                               sizeof(buffer));
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            cerrarPuerto();
-            throw std::runtime_error("Error de I/O al leer el puerto serie.");
-        }
-#endif
-        if (n == 0) {
-            if (std::chrono::steady_clock::now() < limite)
-                continue;
-            cerrarPuerto();
-            if (respuesta.empty())
-                throw std::runtime_error(
-                    "Tiempo de espera agotado al leer el puerto serie.");
-            const std::string respuestaLimpia = limpiarRespuesta(respuesta);
-            validarRespuestaControlador(respuestaLimpia);
-            throw std::runtime_error(
-                "Respuesta serie incompleta: no se recibio OK del firmware. "
-                "Respuesta recibida: " + respuestaLimpia);
-        }
-
-        for (int i = 0; i < n; ++i) {
-            const char caracter = buffer[i];
-            respuesta += caracter;
-            if (caracter == '\n') {
-                if (limpiarRespuesta(linea) == "OK")
-                    return respuesta;
-                linea.clear();
-            } else {
-                linea += caracter;
-            }
-        }
+std::string Robot::enviarComandoRaw(const std::string& comando, unsigned int timeoutMs) {
+    if (!estaConectado()) throw RobotNotConnectedException();
+    try {
+        return limpiarRespuesta(canal_.intercambiar(comando, timeoutMs));
+    } catch (const ErrorSerie& error) {
+        validarRespuestaControlador(error.respuestaParcial());
+        throw;
     }
-}
-
-std::string Robot::enviarComandoRaw(
-    const std::string& comando,
-    unsigned int timeoutMs
-) {
-    if (!conectado) {
-        throw RobotNotConnectedException();
-    }
-    
-#ifdef _WIN32
-    if (!PurgeComm(reinterpret_cast<HANDLE>(fd_serie),
-                   PURGE_RXCLEAR | PURGE_TXCLEAR)) {
-        cerrarPuerto();
-        throw std::runtime_error(
-            "Error al limpiar el puerto serie antes de escribir.");
-    }
-    COMMTIMEOUTS timeouts{};
-    timeouts.ReadIntervalTimeout = 50;
-    timeouts.ReadTotalTimeoutConstant = timeoutMs;
-    timeouts.WriteTotalTimeoutConstant = 1000;
-    if (!SetCommTimeouts(
-            reinterpret_cast<HANDLE>(fd_serie), &timeouts)) {
-        cerrarPuerto();
-        throw std::runtime_error(
-            "Error al configurar el tiempo de espera del puerto serie.");
-    }
-    std::size_t enviados = 0;
-    while (enviados < comando.size()) {
-        DWORD cantidad = 0;
-        const DWORD restante = static_cast<DWORD>(comando.size() - enviados);
-        if (!WriteFile(reinterpret_cast<HANDLE>(fd_serie),
-                       comando.data() + enviados, restante, &cantidad, nullptr) ||
-            cantidad == 0) {
-            cerrarPuerto();
-            throw std::runtime_error("Error de I/O al escribir en el puerto serie.");
-        }
-        enviados += cantidad;
-    }
-#else
-    if (tcflush(static_cast<int>(fd_serie), TCIOFLUSH) != 0) {
-        cerrarPuerto();
-        throw std::runtime_error(
-            "Error al limpiar el puerto serie antes de escribir.");
-    }
-    std::size_t enviados = 0;
-    while (enviados < comando.size()) {
-        const ssize_t cantidad = write(
-            static_cast<int>(fd_serie), comando.data() + enviados,
-            comando.size() - enviados);
-        if (cantidad < 0) {
-            if (errno == EINTR)
-                continue;
-            cerrarPuerto();
-            throw std::runtime_error(
-                "Error de I/O al escribir en el puerto serie.");
-        }
-        if (cantidad == 0) {
-            cerrarPuerto();
-            throw std::runtime_error(
-                "Escritura serie incompleta.");
-        }
-        enviados += static_cast<std::size_t>(cantidad);
-    }
-#endif
-    return limpiarRespuesta(leerRespuesta(timeoutMs));
 }
 
 std::string Robot::obtenerEstado() {
@@ -299,7 +60,7 @@ void Robot::seleccionarModoTrabajo(ModoTrabajo modo) {
 }
 
 std::string Robot::seleccionarModoCoordenadas(ModoCoordenadas modo) {
-    if (conectado) {
+    if (estaConectado()) {
         const std::string comando =
             modo == ModoCoordenadas::ABSOLUTO ? "G90\r" : "G91\r";
         const std::string respuesta = enviarComandoRaw(comando);
@@ -332,6 +93,10 @@ PosicionCartesiana Robot::obtenerPosicionActual() {
     const std::string respuesta = enviarComandoRaw("M114\r");
     validarRespuestaControlador(respuesta);
 
+    return interpretarPosicion(respuesta);
+}
+
+PosicionCartesiana Robot::interpretarPosicion(const std::string& respuesta) const {
     static const std::regex formato(
         R"(CURRENT POSITION:\s*\[X:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s+Y:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s+Z:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s+E:\s*([-+]?(?:[0-9]*\.)?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\])"
     );
@@ -395,13 +160,7 @@ std::string Robot::irAOrigen() {
     return respuesta;
 }
 
-std::string Robot::mover(
-    double x,
-    double y,
-    double z,
-    double velocidad
-) {
-    exigirModoManual();
+void Robot::validarEntradaMovimiento(double x, double y, double z, double velocidad) {
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
         throw std::invalid_argument(
             "Las coordenadas deben ser valores numericos finitos.");
@@ -412,7 +171,11 @@ std::string Robot::mover(
             "La velocidad debe estar entre 5 y 10 mm/s.");
     }
 
-    const PosicionCartesiana actual = obtenerPosicionActual();
+}
+
+Robot::Movimiento Robot::prepararMovimiento(
+    double x, double y, double z, double velocidad, const PosicionCartesiana& actual) const {
+    validarEntradaMovimiento(x, y, z, velocidad);
     const PosicionCartesiana destino =
         modoCoordenadas_ == ModoCoordenadas::ABSOLUTO
             ? PosicionCartesiana{x, y, z}
@@ -443,18 +206,23 @@ std::string Robot::mover(
                 "de trabajo.");
     }
 
-    const std::string modo =
-        modoCoordenadas_ == ModoCoordenadas::ABSOLUTO ? "G90\r" : "G91\r";
-    validarRespuestaControlador(enviarComandoRaw(modo));
-
     std::ostringstream comando;
+    comando.imbue(std::locale::classic());
     comando << std::fixed << std::setprecision(6)
             << "G1 X" << x << " Y" << y << " Z" << z
             << " F" << velocidad << '\r';
     const unsigned int timeoutMs = static_cast<unsigned int>(
         std::ceil(distancia / velocidad * 1000.0) + 10000.0);
-    const std::string respuesta =
-        enviarComandoRaw(comando.str(), timeoutMs);
+    return {destino, comando.str(), timeoutMs};
+}
+
+std::string Robot::mover(double x, double y, double z, double velocidad) {
+    exigirModoManual();
+    validarEntradaMovimiento(x, y, z, velocidad);
+    const auto movimiento = prepararMovimiento(x, y, z, velocidad, obtenerPosicionActual());
+    const std::string modo = modoCoordenadas_ == ModoCoordenadas::ABSOLUTO ? "G90\r" : "G91\r";
+    validarRespuestaControlador(enviarComandoRaw(modo));
+    const auto respuesta = enviarComandoRaw(movimiento.comando, movimiento.timeoutMs);
     validarRespuestaControlador(respuesta);
     return respuesta;
 }
@@ -471,4 +239,86 @@ std::string Robot::desactivarEfector() {
     const std::string respuesta = enviarComandoRaw("M5\r", 5000);
     validarRespuestaControlador(respuesta);
     return respuesta;
+}
+
+void Robot::exigirMotoresActivos(const std::string& respuesta) const {
+    if (respuesta.find("MOTORS ENABLED") == std::string::npos ||
+        respuesta.find("MOTORS DISABLED") != std::string::npos)
+        throw std::runtime_error("El controlador no confirma motores activados.");
+}
+
+ConfirmacionOrdenAutomatica Robot::ejecutarOrdenAutomatica(const OrdenTarea& orden) {
+    orden.validar(); // Tambien protege a quien construya una OrdenTarea sin usar el parser.
+    if (modoTrabajo_ != ModoTrabajo::AUTOMATICO)
+        throw RobotModeException("La orden automatica requiere modo automatico.");
+    if (!estaConectado()) throw RobotNotConnectedException();
+
+    bool envioIntentado = false;
+    try {
+        std::string comando;
+        unsigned int timeoutMs = 1000;
+        std::optional<PosicionCartesiana> destino;
+        if (orden.tipo == TipoOrdenTarea::MOVIMIENTO || orden.tipo == TipoOrdenTarea::ORIGEN) {
+            const auto estado = enviarComandoRaw("M114\r");
+            validarRespuestaControlador(estado);
+            exigirMotoresActivos(estado);
+            if (orden.tipo == TipoOrdenTarea::MOVIMIENTO) {
+                const auto actual = interpretarPosicion(estado);
+                const bool absoluto = modoCoordenadas_ == ModoCoordenadas::ABSOLUTO;
+                const auto movimiento = prepararMovimiento(
+                    orden.x.value_or(absoluto ? actual.x : 0.0),
+                    orden.y.value_or(absoluto ? actual.y : 0.0),
+                    orden.z.value_or(absoluto ? actual.z : 0.0),
+                    orden.velocidad.value_or(VELOCIDAD_PREDETERMINADA_MM_S), actual);
+                validarRespuestaControlador(enviarComandoRaw(absoluto ? "G90\r" : "G91\r"));
+                comando = movimiento.comando;
+                timeoutMs = movimiento.timeoutMs;
+                destino = movimiento.destino;
+            } else {
+                comando = "G28\r";
+                timeoutMs = 10000;
+            }
+        } else {
+            switch (orden.tipo) {
+                case TipoOrdenTarea::ABSOLUTO: comando = "G90\r"; break;
+                case TipoOrdenTarea::RELATIVO: comando = "G91\r"; break;
+                case TipoOrdenTarea::ACTIVAR_EFECTOR: comando = "M3\r"; timeoutMs = 5000; break;
+                case TipoOrdenTarea::DESACTIVAR_EFECTOR: comando = "M5\r"; timeoutMs = 5000; break;
+                case TipoOrdenTarea::ACTIVAR_MOTORES: comando = "M17\r"; break;
+                case TipoOrdenTarea::DESACTIVAR_MOTORES: comando = "M18\r"; break;
+                case TipoOrdenTarea::ESTADO: comando = "M114\r"; break;
+                default: throw std::invalid_argument("Tipo de orden invalido.");
+            }
+        }
+        envioIntentado = true; // Una escritura parcial tambien deja resultado desconocido.
+        const auto respuesta = enviarComandoRaw(comando, timeoutMs);
+        validarRespuestaControlador(respuesta);
+        if (orden.tipo == TipoOrdenTarea::ORIGEN && respuesta.find("HOMING COMPLETE") == std::string::npos)
+            throw std::runtime_error("El controlador no confirmo el origen.");
+        if (orden.tipo == TipoOrdenTarea::ABSOLUTO) modoCoordenadas_ = ModoCoordenadas::ABSOLUTO;
+        if (orden.tipo == TipoOrdenTarea::RELATIVO) modoCoordenadas_ = ModoCoordenadas::RELATIVO;
+        if (orden.tipo == TipoOrdenTarea::ESTADO) interpretarPosicion(respuesta);
+        if (orden.tipo == TipoOrdenTarea::MOVIMIENTO || orden.tipo == TipoOrdenTarea::ORIGEN) {
+            // Hipotesis del firmware versionado: M114 se procesa despues de la interpolacion.
+            // No certificar finalizacion fisica hasta verificarlo con el Arduino corregido.
+            const auto final = enviarComandoRaw("M114\r", timeoutMs);
+            validarRespuestaControlador(final);
+            const auto posicion = interpretarPosicion(final);
+            if (destino && (std::abs(posicion.x - destino->x) > 0.05 ||
+                            std::abs(posicion.y - destino->y) > 0.05 ||
+                            std::abs(posicion.z - destino->z) > 0.05))
+                throw std::runtime_error("La posicion informada no coincide con el destino esperado.");
+            return {true};
+        }
+        return {false};
+    } catch (const RobotCommandRejectedException&) {
+        throw ErrorOrdenAutomatica(envioIntentado ? ResultadoOrdenAutomatica::ERROR_CONTROLADOR
+                                                 : ResultadoOrdenAutomatica::NO_ENVIADA,
+                                   "El controlador informo un error; no se reintenta.");
+    } catch (const std::exception& e) {
+        throw ErrorOrdenAutomatica(envioIntentado ? ResultadoOrdenAutomatica::DESCONOCIDO
+                                                 : ResultadoOrdenAutomatica::NO_ENVIADA,
+                                   envioIntentado ? "Resultado de la orden desconocido; no se reintenta."
+                                                  : std::string("Orden no enviada: ") + e.what());
+    }
 }

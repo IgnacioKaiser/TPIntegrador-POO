@@ -8,7 +8,7 @@
 
 namespace robotrpc {
 
-enum class TipoErrorTarea { VALIDACION, DUPLICADA, ACCESO_DENEGADO, ALMACENAMIENTO };
+enum class TipoErrorTarea { VALIDACION, DUPLICADA, ACCESO_DENEGADO, ALMACENAMIENTO, NO_ENCONTRADA };
 
 class ErrorTarea : public std::runtime_error {
 public:
@@ -30,6 +30,7 @@ public:
     Tarea guardar(const Usuario& autenticado, const std::string& nombre,
                   const std::string& contenido);
     std::vector<Tarea> listar(const Usuario& autenticado) const;
+    ContenidoTarea leer(const Usuario& autenticado, const std::string& id) const;
 
 private:
     std::filesystem::path raiz_;

@@ -196,3 +196,19 @@ actividad devuelve cero; sin robot muestra los datos que no están disponibles.
 En Linux usar `python3`. Cada pedido verifica nuevamente usuario, clave y
 habilitación. `log` e `informe-usuarios` siguen siendo administrativos.
 Ver [US-19](docs/backlog/US-19.md) para probar con dos usuarios y datos temporales.
+
+## US-17: base local para ejecutar tareas (Hito 1)
+
+Se agrega lectura autorizada por ID, interpretación del formato ejecutable y una
+API C++ para una orden automática. Todavía no hay ejecución de tareas desde RPC
+ni comandos nuevos del cliente. Guardar un archivo no certifica que sea ejecutable.
+
+```powershell
+mingw32-make -C server test-ejecucion
+```
+
+Esta prueba usa archivos temporales y un canal serie sustituido; no abre Arduino.
+En Linux el comando previsto es `make -C server test-ejecucion`, pendiente de
+ejecutar allí. La barrera M114 requiere verificación posterior con el firmware
+corregido; no se afirma finalización física. Ver [US-17](docs/backlog/US-17.md)
+para formato, clases, errores y pendientes del Hito 2.

@@ -454,6 +454,12 @@ debe exponer el servicio a una red no confiable.
 
 ## 13. Compatibilidad y mantenimiento
 
+US-17 Hito 1 solo agrega APIs locales C++ de lectura y ejecución de una orden.
+No publica `tarea.ejecutar` ni `tarea.estado`: esas operaciones siguen pendientes
+del Hito 2. El sobre de seis campos, las credenciales y las operaciones de este
+contrato se conservan. Ver [US-17](backlog/US-17.md) para el alcance local y la
+verificación pendiente de M114 como barrera.
+
 El cliente y el servidor deben respetar los mismos nombres, tipos y significados. Si se modifica la estructura general o la definición de una operación, se actualizarán este documento y las implementaciones y pruebas correspondientes de ambos lados.
 
 La biblioteca XML-RPC se reutilizará para transportar y representar los valores; no se implementará manualmente un parser XML adicional para estos mensajes.

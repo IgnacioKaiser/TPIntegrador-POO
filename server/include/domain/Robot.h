@@ -4,6 +4,8 @@
 #include <string>
 #include <stdexcept>
 #include <cstdint>
+#include "domain/CanalSerie.h"
+#include "domain/ProgramaTarea.h"
 
 enum class ModoTrabajo {
     MANUAL,
@@ -38,10 +40,26 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+enum class ResultadoOrdenAutomatica { NO_ENVIADA, ERROR_CONTROLADOR, DESCONOCIDO };
+
+class ErrorOrdenAutomatica : public std::runtime_error {
+public:
+    ErrorOrdenAutomatica(ResultadoOrdenAutomatica resultado, const std::string& mensaje)
+        : std::runtime_error(mensaje), resultado_(resultado) {}
+    ResultadoOrdenAutomatica resultado() const noexcept { return resultado_; }
+private:
+    ResultadoOrdenAutomatica resultado_;
+};
+
+struct ConfirmacionOrdenAutomatica {
+    // Solo confirmacion del protocolo. M114 como barrera aun requiere prueba con Arduino.
+    bool finalizacionConsultada;
+};
+
 class Robot {
 private:
-    std::intptr_t fd_serie;
-    bool conectado;
+    PuertoSerie puerto_;
+    CanalSerie& canal_;
     ModoTrabajo modoTrabajo_;
     ModoCoordenadas modoCoordenadas_;
 
@@ -50,17 +68,26 @@ private:
     std::string enviarComandoRaw(
         const std::string& comando,
         unsigned int timeoutMs = 1000);
-    std::string leerRespuesta(unsigned int timeoutMs);
-    void cerrarPuerto();
     PosicionCartesiana obtenerPosicionActual();
+    PosicionCartesiana interpretarPosicion(const std::string& respuesta) const;
+    void exigirMotoresActivos(const std::string& respuesta) const;
+    struct Movimiento {
+        PosicionCartesiana destino;
+        std::string comando;
+        unsigned int timeoutMs;
+    };
+    Movimiento prepararMovimiento(double x, double y, double z, double velocidad,
+                                 const PosicionCartesiana& actual) const;
+    static void validarEntradaMovimiento(double x, double y, double z, double velocidad);
     void exigirModoManual() const;
     void validarRespuestaControlador(const std::string& respuesta) const;
 
 public:
-    static constexpr double VELOCIDAD_PREDETERMINADA_MM_S = 5.0;
-    static constexpr double VELOCIDAD_MAXIMA_MM_S = 10.0;
+    static constexpr double VELOCIDAD_PREDETERMINADA_MM_S = OrdenTarea::VELOCIDAD_PREDETERMINADA;
+    static constexpr double VELOCIDAD_MAXIMA_MM_S = OrdenTarea::VELOCIDAD_MAXIMA;
 
     Robot();
+    explicit Robot(CanalSerie& canal);
     ~Robot();
     Robot(const Robot&) = delete;
     Robot& operator=(const Robot&) = delete;
@@ -81,6 +108,7 @@ public:
     std::string mover(double x, double y, double z, double velocidad);
     std::string activarEfector();
     std::string desactivarEfector();
+    ConfirmacionOrdenAutomatica ejecutarOrdenAutomatica(const OrdenTarea& orden);
 
     static bool posicionPermitida(const PosicionCartesiana& posicion);
 };

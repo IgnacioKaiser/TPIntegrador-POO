@@ -10,4 +10,9 @@ struct Tarea {
     std::string nombre;
 };
 
+struct ContenidoTarea {
+    Tarea tarea;
+    std::string contenido;
+};
+
 } // namespace robotrpc

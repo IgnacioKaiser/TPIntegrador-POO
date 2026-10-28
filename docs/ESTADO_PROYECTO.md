@@ -1,12 +1,12 @@
 # Estado del proyecto
 
-Fecha de revision: 28/10/2026. Rama local: `us-19-actividad-propia`, creada desde
-`origin/master` (`1583e31`) después de `git fetch origin`. El árbol estaba limpio
-y `master` local coincidía con esa referencia. US-18/US-20/US-21 y su documentación
-ya están integradas en esa base. US-19 está implementada y verificada en esta rama;
-sigue pendiente de integrar a master. En esta etapa solo se crean commits locales,
-sin push ni merge y sin modificar Robot ni firmware.
+Fecha de revision: 28/10/2026. Rama local: `us-17-ejecucion-tareas`, creada desde
+`origin/master` actualizado por fetch, base `d86c176`. El árbol estaba limpio;
+`master` local se conservó en `c72611a`. US-19 ya está integrada en esa base.
+US-17 se limita al Hito 1 local: lectura, formato ejecutable y una orden automática.
+No se hacen commits, push ni merges; no se modifica firmware ni se abre Arduino.
 
+Antecedente de la última revisión de control manual (se conserva su evidencia):
 Fecha de revision: 28/10/2026. Rama de trabajo: `ControlManual`.
 Integra el control manual de US-10 a US-13 con identidad, autorizacion y menu
 por rol de US-23, además de las operaciones de robot de US-06 a US-09.
@@ -70,6 +70,9 @@ US-15/US-16/US-24 ya figuran integradas en `master` local mediante `e44e6da`.
 - Cliente: cli.py presenta; cliente.py transporta y construye solicitudes; mensaje.py representa datos.
 - Servidor: ServidorXmlRpc conecta adaptador, acceso protegido y servicios.
 - `Robot` conserva la conexion serie y el modo de trabajo y coordenadas; el servidor valida y traduce las solicitudes a comandos soportados por el firmware.
+- US-17 Hito 1: Robot delega el recurso serie a CanalSerie/PuertoSerie y comparte
+  validaciones entre movimiento manual y una orden automática local. ProgramaTarea
+  interpreta el subconjunto ejecutable; RepositorioTareas agrega lectura autorizada.
 - Usuario, RepositorioUsuarios, Autenticador y ServicioProtegido son las piezas de identidad y acceso.
 - Tarea y RepositorioTareas son el almacenamiento por propietario, conectados a
   ServicioProtegido. El listado no lee contenidos ni devuelve rutas internas.
@@ -153,16 +156,55 @@ conexión serie y detalle seguro. No se ejecutaron Linux ni hardware. La conexi�
 exitosa y sus fronteras se prueban con eventos sintéticos del CSV, no con Arduino.
 No se afirma que el informe mida movimiento físico. Se heredan el barrido completo,
 la ausencia de instantánea entre páginas y las limitaciones ante fallos de registro.
-US-19 no está integrada a master.
+US-19 ya está integrada en `origin/master`, base de esta etapa; sus resultados
+anteriores se conservan como antecedentes.
+
+## US-17 Hito 1: base local, sin ejecución remota
+
+Rama `us-17-ejecucion-tareas`, base `d86c176`. Implementados leer por ID con
+propiedad, ProgramaTarea y órdenes tipadas, CanalSerie sustituible y
+Robot::ejecutarOrdenAutomatica. No hay hilo, ejecución de archivo completo,
+RPC nuevo ni cambios del cliente. No se publican aún tarea.ejecutar/tarea.estado.
+Las decisiones y explicación de clases se mantienen en [US-17](backlog/US-17.md)
+y D15 de DECISIONES_DISENO.md.
+
+Verificación de esta etapa en Windows nativo/PowerShell, g++ MSYS2 UCRT64 15.2.0
+y Python 3.14.0:
+
+- La prueba específica inicial pasó con 125 comprobaciones. Tras ampliar casos,
+  la versión final pasó con 132; incluye archivo administrado → parser → Robot →
+  canal sustituido. Dos casos nuevos de enlaces simbólicos omitidos por permisos.
+- La primera regresión completa detectó violación de acceso por objetos antiguos
+  compilados con otra disposición de Robot. Se corrigió la generación de
+  dependencias del Makefile y se reconstruyó con `mingw32-make -B -C server test`.
+- Esa reconstrucción y suite completa terminaron correctamente: dominio, usuarios,
+  autenticación, 59 comprobaciones de tareas, CSV, 132 del Hito 1, 49 pruebas Python
+  del cliente y 35 de integración XML-RPC con el servidor C++ real. Las dos
+  omisiones anteriores de enlaces de tareas se suman a las dos de la prueba nueva.
+- Un ensayo sin compilar (`make -n -W include/domain/Robot.h build/test_domain.exe`)
+  confirmó que las dependencias corregidas detectan el cambio de cabecera.
+
+Los archivos, bases y CSV de prueba son temporales; no se modificaron datos
+reales. Las pruebas nuevas sustituyen el canal completo y comprueban secuencias,
+respuestas y plazos pedidos, no tiempos ni bytes de un Arduino. PuertoSerie se
+compiló para Windows, pero su intercambio con hardware no se ejecutó aquí.
+No se ejecutó Linux ni se modificó firmware.
+
+M114 como barrera de fin de interpolación y la tolerancia de comparación de
+posición siguen pendientes de verificar con el firmware corregido del equipo.
+El código y las respuestas simuladas no certifican finalización física. Los
+antecedentes de reverificación de US-12 incorporados desde master se conservan;
+no se presentan como prueba física de US-17 ni de este entorno.
+US-17 no está completa ni integrada a master. Se detiene el trabajo al cerrar
+este Hito 1, sin commits, push ni merges.
 
 ## Trabajo paralelo y pendientes generales
 
-No se presupone el trabajo local de otros integrantes. Esta etapa no cambia
-interfaces de Robot ni firmware. Pendientes: enseñanza de trayectorias y ejecución
+No se presupone el trabajo local de otros integrantes. El Hito 1 de US-17 extiende Robot y extrae el canal serie; no modifica firmware. Pendientes: enseñanza de trayectorias y ejecución
 automática; alcance restante del informe global US-20; CLI administrativa completa;
 coordinación de acceso; entrega y diagramas. La US-23 completa sigue abierta.
-La integración a master de US-19 queda a cargo del usuario después de revisar
-los commits y comprobar que origin/master no haya avanzado de forma incompatible.
+US-17 sigue pendiente de ejecución completa, atención concurrente, RPC y cliente
+del Hito 2. La integración a master no se realiza en esta tarea.
 
 ## Entorno y comandos base
 Windows del usuario: PowerShell, g++ MSYS2 UCRT64 en C:/msys64/ucrt64/bin, mingw32-make y Python 3.14. Dependencias: SQLite y libsodium UCRT64.

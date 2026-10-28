@@ -48,7 +48,8 @@ APP_SOURCES := $(wildcard src/*.cpp) $(wildcard src/domain/*.cpp)
 RPC_OBJECTS := $(patsubst %.cpp,build/%.o,$(RPC_SOURCES))
 LOG_OBJECTS := $(patsubst %.cpp,build/%.o,$(LOG_SOURCES))
 APP_OBJECTS := $(patsubst %.cpp,build/%.o,$(APP_SOURCES))
-DOMAIN_OBJECTS := build/src/mensaje.o build/src/servicio.o build/src/domain/Robot.o
+CONTROL_OBJECTS := build/src/domain/Robot.o build/src/domain/CanalSerie.o build/src/domain/ProgramaTarea.o
+DOMAIN_OBJECTS := build/src/mensaje.o build/src/servicio.o $(CONTROL_OBJECTS)
 RPC_LIB := build/libxmlrpcpp.a
 LOG_LIB := build/libtp2_logger.a
 SERVER := build/robot_server$(EXE)
@@ -57,9 +58,10 @@ USER_DEPS := build/src/usuarios/autenticador.d build/src/usuarios/servicio_prote
 	build/tests/test_autenticacion.d $(USER_OBJECTS:.o=.d) \
 	build/tools/usuarios_admin.d build/tests/test_usuarios.d
 DEPS := $(RPC_OBJECTS:.o=.d) $(LOG_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) \
-	build/tests/test_domain.d $(USER_DEPS) $(TAREAS_OBJECTS:.o=.d) build/tests/test_tareas.d
+	build/tests/test_domain.d $(USER_DEPS) $(TAREAS_OBJECTS:.o=.d) build/tests/test_tareas.d \
+	build/tests/test_ejecucion_tareas.d build/tests/test_registro_actividad.d
 
-.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion test-tareas test-registro usuarios clean
+.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion test-tareas test-registro test-ejecucion usuarios clean
 all: $(SERVER) libraries $(USER_TOOL)
 libraries: $(RPC_LIB) $(LOG_LIB)
 
@@ -71,7 +73,7 @@ $(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(LDLIBS) $(USER_LIBS)
 build/%.o: %.cpp
 	$(crear_directorio)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $(call argumento_ruta,$<) -o $(call argumento_ruta,$@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -MT "$@" -c "$<" -o "$@"
 $(DOMAIN_TEST): build/tests/test_domain.o $(DOMAIN_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(LDLIBS)
 
@@ -83,7 +85,7 @@ build/examples/%$(EXE): xmlrpc/examples/%.cpp $(RPC_LIB)
 test-unit: $(DOMAIN_TEST)
 	$(ejecutar_prueba)
 	$(prueba_python) -m unittest discover -s $(call argumento_ruta,../client/tests) -v
-test: all test-unit test-usuarios test-autenticacion test-tareas test-registro
+test: all test-unit test-usuarios test-autenticacion test-tareas test-registro test-ejecucion
 	$(prueba_python) -m unittest discover -s tests -p "test_integration.py" -v
 usuarios: $(USER_TOOL)
 $(USER_TOOL): build/tools/usuarios_admin.o $(USER_OBJECTS)
@@ -105,6 +107,12 @@ $(REGISTRO_TEST): build/tests/test_registro_actividad.o build/src/registro_activ
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS)
 test-registro: $(REGISTRO_TEST)
 	$(if $(filter Windows_NT,$(OS)),$(if $(MSYSTEM),./$(REGISTRO_TEST),.\$(subst /,\,$(REGISTRO_TEST))),./$(REGISTRO_TEST))
+
+EJECUCION_TEST := build/test_ejecucion_tareas$(EXE)
+$(EJECUCION_TEST): build/tests/test_ejecucion_tareas.o $(TAREAS_OBJECTS) $(CONTROL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS)
+test-ejecucion: $(EJECUCION_TEST)
+	$(prueba_python) $(call argumento_ruta,tests/ejecutar_ejecucion_tareas.py)
 clean:
 	$(limpiar)
 -include $(DEPS)

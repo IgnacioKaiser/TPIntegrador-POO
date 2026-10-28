@@ -202,6 +202,41 @@ Tarea RepositorioTareas::guardar(const Usuario& autenticado, const std::string& 
     }
 }
 
+ContenidoTarea RepositorioTareas::leer(const Usuario& autenticado, const std::string& id) const {
+    validarUsuario(autenticado);
+    const auto separador = id.find(':');
+    const int propietario = separador == std::string::npos ? 0 : leerId(id.substr(0, separador));
+    const std::string nombre = separador == std::string::npos ? "" : id.substr(separador + 1);
+    if (propietario == 0 || normalizarNombre(nombre) != nombre)
+        throw ErrorTarea(TipoErrorTarea::VALIDACION, "Identificador de tarea invalido.");
+    // Comprobar propiedad antes de consultar si existe el archivo ajeno.
+    if (autenticado.rol != Rol::ADMINISTRADOR && propietario != autenticado.id)
+        throw ErrorTarea(TipoErrorTarea::ACCESO_DENEGADO, "Solo puede leer sus propias tareas.");
+    try {
+        verificarRaiz();
+        const auto ruta = carpetaPropietario(propietario) / nombre;
+        const auto estado = fs::symlink_status(ruta);
+        if (!fs::exists(estado))
+            throw ErrorTarea(TipoErrorTarea::NO_ENCONTRADA, "La tarea no existe.");
+        if (fs::is_symlink(estado) || !fs::is_regular_file(estado))
+            throw ErrorTarea(TipoErrorTarea::ALMACENAMIENTO, "La tarea no es un archivo regular permitido.");
+        if (fs::file_size(ruta) > MAX_CONTENIDO)
+            throw ErrorTarea(TipoErrorTarea::VALIDACION, "La tarea supera 1 MiB.");
+        std::ifstream archivo(ruta, std::ios::binary);
+        if (!archivo)
+            throw ErrorTarea(TipoErrorTarea::ALMACENAMIENTO, "No se pudo abrir la tarea.");
+        // Acotar tambien la lectura si el archivo crecio despues de consultar su tamano.
+        std::string contenido(MAX_CONTENIDO + 1, '\0');
+        archivo.read(contenido.data(), static_cast<std::streamsize>(contenido.size()));
+        contenido.resize(static_cast<std::size_t>(archivo.gcount()));
+        if (archivo.bad() || (archivo.fail() && !archivo.eof()))
+            throw ErrorTarea(TipoErrorTarea::ALMACENAMIENTO, "No se pudo completar la lectura.");
+        return {crearTarea(propietario, nombre), normalizarContenido(contenido)};
+    } catch (const fs::filesystem_error&) {
+        throw ErrorTarea(TipoErrorTarea::ALMACENAMIENTO, "No se pudo leer la tarea administrada.");
+    }
+}
+
 std::vector<Tarea> RepositorioTareas::listar(const Usuario& autenticado) const {
     validarUsuario(autenticado);
     std::vector<Tarea> tareas;

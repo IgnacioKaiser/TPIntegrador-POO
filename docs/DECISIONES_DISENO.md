@@ -332,3 +332,28 @@ de otros usuarios. Las consultas se siguen registrando después de responder.
 El alcance del detalle seguro, el inicio de actividad y los costos de lectura se
 explican una sola vez en [US-19](backlog/US-19.md); los tipos están en CONTRATO.md.
 Esta ampliación no completa ni cambia el informe global de US-20.
+
+## D15. Base de ejecución de tareas, US-17 Hito 1
+
+Fecha: 28/10/2026. Rama `us-17-ejecucion-tareas`, base `origin/master` `d86c176`.
+La lectura se agrega al repositorio existente y recibe Usuario autenticado e ID
+lógico, nunca rutas ni permisos declarados. ProgramaTarea interpreta un subconjunto
+cerrado antes de ejecutar; guardar sigue sin certificar que un archivo sea ejecutable.
+
+Robot conserva las validaciones geométricas compartidas entre control manual y
+una orden automática, con entradas separadas según modo. No se cambia a manual
+para ejecutar tareas ni se implementa un intérprete general de G-Code.
+
+Se extrae el canal serie para sustituirlo en pruebas sin abrir hardware, conservando
+la propiedad y cierre de recursos por objetos. Los intercambios dejan de purgar
+entrada entre órdenes para conservar errores tardíos; sus lecturas tienen plazo
+y tamaño acotados. No se agregan bibliotecas, sesiones ni otro almacenamiento.
+
+La consulta M114 posterior a movimiento se implementa como hipótesis verificable,
+no como garantía física: queda pendiente contrastarla con el firmware corregido.
+Se distinguen orden no enviada, error del controlador y resultado desconocido,
+sin reintentos. Formato, límites, tiempos, tolerancia y alternativas se explican
+en [US-17](backlog/US-17.md), sin duplicarlos aquí.
+
+Este hito no agrega hilo, operaciones RPC, cliente ni eventos de ejecución. Las
+decisiones de reserva y atención durante una secuencia corresponden al Hito 2.
