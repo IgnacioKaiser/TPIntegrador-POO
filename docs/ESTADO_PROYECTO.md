@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Fecha de revision: 27/10/2026. Rama de trabajo: `ControlManual`.
+Fecha de revision: 27/10/2026. Rama de trabajo: `us-15-16-24-tareas`, base `92f0f81`.
 Integra el control manual de US-10 a US-13 con identidad, autorizacion y menu
 por rol de US-23, además de las operaciones de robot de US-06 a US-09.
 Este documento es una fotografia, no una declaracion permanente. Antes de una nueva tarea, verificar el commit actual y actualizar lo que cambio.
@@ -16,6 +16,16 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - US-06 a US-09: la base local `0add6a5` ya incluye conexion serie, consulta de estado, comandos de motores y ayuda. No se infiere que el commit por si solo certifique pruebas con Arduino.
 - US-10 a US-13: modos, origen y pinza verificados con el Arduino simulado en COM5 (CH340); `G28`, `M3`, `M5`, `G90` y `G91` respondieron correctamente. La consulta serie detectó que `M114` no devuelve sus coordenadas, por lo que `G1` aún no se puede validar con `Robot::mover` y no se envió. En Windows/MSYS2 también pasaron las pruebas C++ de dominio, las 17 de cliente, las temporales de usuarios/autenticación y las 24 de integración XML-RPC. La simulación no verifica movimiento físico.
 - US-05: integrado en master mediante PR #1. Agrega usuario.habilitar y usuario.deshabilitar para administradores. Sus pruebas de cliente, usuarios y autenticacion se ejecutaron nuevamente con la suite completa de esta etapa.
+- US-15/US-16, Hito A implementado en esta rama: Tarea y RepositorioTareas guardan archivos
+  normalizados por ID de propietario y listan lo propio para OPERADOR o todo para
+  ADMINISTRADOR. Sin tabla de tareas, RPC, cambios en Robot ni cliente. US-24 pendiente.
+  Pruebas nativas Windows/MSYS2 UCRT64/g++ 15.2.0/Python 3.14.0: 59 comprobaciones
+  de tareas correctas en directorios temporales. Dos casos de enlaces simbolicos
+  omitidos por permisos/plataforma. Linux no ejecutado.
+  La suite existente tambien paso: dominio, usuarios, autenticacion, 33 pruebas del
+  cliente y 27 de integracion con servidor C++ real y bases temporales. No es una
+  integracion RPC de tareas; esa parte corresponde al Hito B. Ver backlog/US-15.md,
+  backlog/US-16.md y backlog/US-24.md para alcance y limites.
 - US-23 (avance integrado en la rama de trabajo): cliente con conectar (puerto opcional),
   desconectar, estado, activar_motores, desactivar_motores y ayuda, por terminal y menu.
   Muestra datos anidados, disponibilidad y errores parciales. Agrega usuario.actual
@@ -37,8 +47,12 @@ Aplicacion OO para manipulacion remota de un robot RRR de tres grados de liberta
 - Servidor: ServidorXmlRpc conecta adaptador, acceso protegido y servicios.
 - `Robot` conserva la conexion serie y el modo de trabajo y coordenadas; el servidor valida y traduce las solicitudes a comandos soportados por el firmware.
 - Usuario, RepositorioUsuarios, Autenticador y ServicioProtegido son las piezas de identidad y acceso.
+- Tarea y RepositorioTareas son el almacenamiento local del Hito A, aun sin conectar
+  a ServicioProtegido ni al servidor en ejecucion. El listado no lee contenidos.
 - Logger_396/File_396/LogRecord_396 estan incorporados como base, pero el log completo del TPI no esta integrado.
 - data/db/usuarios.sqlite es local y no esta en Git. Cada instalacion inicializa su base. No sobrescribirla ni incluir claves reales en documentacion.
+- Conservar y respaldar juntos la base de usuarios y las carpetas de tareas por ID.
+  Reemplazar o reinicializar la base puede reutilizar IDs y alterar sus propietarios.
 - firmware/arduino/robotArm_v0.62sim contiene el codigo provisto. No equivale a tener el puerto serie conectado.
 
 ## Trabajo paralelo y pendientes
@@ -48,11 +62,17 @@ de Jira como evidencia ni asumir que lo publicado representa todo el trabajo loc
 de otro integrante.
 Pendientes generales: trayectorias G-Code, propiedad y ejecucion automatica; log e
 informes; CLI administrativa completa; coordinacion de acceso; entrega y diagramas.
-US-18 (log CSV) y US-15/US-16 (almacenamiento/listado de trayectorias) son opciones para el siguiente trabajo, no asignaciones confirmadas.
+El usuario asigno US-15/US-16/US-24 como bloque. Hito A implementa solo almacenamiento
+y listado local; Hito B (RPC y cliente) espera su revision. US-18 no esta asignada aqui.
 
 ## Entorno y comandos base
 Windows del usuario: PowerShell, g++ MSYS2 UCRT64 en C:/msys64/ucrt64/bin, mingw32-make y Python 3.14. Dependencias: SQLite y libsodium UCRT64.
 Desde la raiz: mingw32-make -C server y mingw32-make -C server test. Linux: make y python3, con dependencias de desarrollo instaladas.
+Solo almacenamiento de tareas: mingw32-make -C server test-tareas (Linux: make).
+Durante la regresion inicial habia objetos .o anteriores a la cabecera actual de
+Robot: aparecieron estado incorrecto y timeouts. Se forzo la reconstruccion del
+servidor y las pruebas C++ correspondientes; despues paso la suite sin cambiar
+fuentes del robot. Ante artefactos viejos, recompilar antes de interpretar esos fallos.
 Preparacion local: server/build/usuarios_admin.exe inicializar (solo base vacia). Servidor: server/build/robot_server.exe. Cliente: python client/main.py. Ver README para sintaxis de PowerShell.
 La escucha sigue en 127.0.0.1; no se ha verificado aqui comunicacion entre dos computadoras ni con Arduino.
 

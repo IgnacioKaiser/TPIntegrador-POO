@@ -95,6 +95,13 @@ Desde la raíz:
 make -C server test
 ```
 
+El Hito A de US-15/US-16 agrega un repositorio local de tareas con pruebas en
+directorios temporales: `mingw32-make -C server test-tareas` en Windows o
+`make -C server test-tareas` en Linux. Todavía no hay subida/listado de tareas por
+RPC ni desde Python (US-24 queda para Hito B). Ver [US-15](docs/backlog/US-15.md).
+La base de usuarios y las carpetas de tareas por ID deben conservarse juntas para
+mantener sus propietarios; no reinicializar la base dejando las tareas anteriores.
+
 También se puede ejecutar `make test` estando dentro de server. `make -C server examples` compila los tres ejemplos originales de XmlRpc++ como ejecutables separados. `make -C server clean` elimina server/build. Ctrl+Shift+B en VS Code compila desde server.
 
 ## Alcance conservado

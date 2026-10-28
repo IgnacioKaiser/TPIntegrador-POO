@@ -158,3 +158,61 @@ La integracion actual conserva el control manual de US-10 a US-13 junto con la
 identidad y las opciones de US-23. Las opciones de conexion y administracion se
 muestran solo al administrador; la autorizacion sigue siendo responsabilidad del
 servidor.
+
+## D11. Tareas en archivos por propietario: US-15/US-16/US-24, Hito A
+
+Fecha: 27/10/2026. Aceptado por el equipo. Base: 92f0f81.
+
+Problema: conservar archivos y su propietario sin mezclar almacenamiento, robot
+y transporte. Solucion: RepositorioTareas guarda en raiz/ID/nombre y Tarea representa
+id logico, propietario_id y nombre. El Usuario debe provenir de la autenticacion
+del servidor; no se recibe una identidad elegida por el cliente. En este hito la API
+es local; autenticar el pedido y conectarla a RPC queda para Hito B.
+
+La consigna y US-15 piden archivos en un directorio administrado. Guardar todo en
+SQLite no cumple literalmente ese criterio. Archivos mas una tabla de tareas es
+posible, pero obliga a sincronizar dos almacenamientos ante fallos. Elegimos archivos
+por ID: la carpeta conserva la propiedad y SQLite sigue conteniendo solo usuarios.
+No duplicamos contenido, nombres de usuario ni un indice persistente de tareas.
+OPERADOR ve solo lo propio; ADMINISTRADOR ve todo, segun los criterios de US-16.
+
+Los nombres se normalizan a minusculas, admiten base ASCII con letras, numeros,
+guion y guion bajo y extension .gcode/.nc, hasta 64 caracteres; se rechazan rutas
+y nombres reservados en Windows. Duplicados del mismo propietario se rechazan sin
+sobrescribir; propietarios distintos pueden usar el mismo nombre. El ID logico
+combina propietario y nombre, por ejemplo 2:pieza.gcode.
+
+Se acepta hasta 1 MiB de texto UTF-8 compatible con XML y se normalizan BOM inicial
+y saltos de linea. Se revisaron los comandos del firmware y los ejemplos en codigo
+y documentacion; no hay archivos .gcode/.nc de ejemplo independientes. El control
+de formato reconoce prefijos G/M numericos, minusculas y formas compactas, comentarios,
+N y separadores %. No interpreta argumentos ni movimientos ni garantiza que el
+firmware pueda ejecutar lo guardado. Las reglas y limites estan en US-15.md.
+
+Se usan fstream y filesystem de C++17 para escribir y recorrer archivos sin otra
+biblioteca ni comandos de un sistema operativo. Los streams cierran recursos al
+salir de su alcance; ademas se comprueba el cierre antes de publicar. No se reutiliza
+File_396 directamente porque esta acoplada a CSV, agrega lineas y omite lineas vacias.
+Se reutilizan los criterios de encapsulacion y manejo de errores de los TPs.
+
+UTF-8 representa caracteres con uno a cuatro bytes. Su control recorre esos bytes
+para rechazar secuencias invalidas y caracteres que el contrato XML no puede llevar;
+no es un interprete G-Code. El costo es una comprobacion lineal y breve sin instalar
+otra biblioteca. Un enlace simbolico apunta a otra ubicacion: se comprueba su tipo
+antes de guardar y se evita recorrerlo al listar.
+
+El temporal se escribe en la carpeta destino y se renombra al terminar. Los listados
+ignoran temporales; fallos normales no publican contenido parcial. Se admite un
+unico proceso escritor con llamadas secuenciales, como el servidor actual. Evitamos
+hilos, bloqueos distribuidos y garantias de corte de energia fuera de este alcance.
+No se siguen enlaces en carpetas de propietario ni archivos administrados. Se agrega
+una excepcion ErrorTarea con tipos distinguibles, sin una jerarquia adicional.
+
+**Usuarios y tareas forman una unidad de respaldo:** conservar la base SQLite y
+las carpetas juntas. Reemplazar/reinicializar la base puede reutilizar IDs y cambiar
+la asociacion de propietarios. No se implementa reasignacion ni migracion automatica.
+Esta es una limitacion de guardar la propiedad por ID, no una validacion que haga
+el sistema. Los datos subidos y sus temporales quedan excluidos de Git.
+
+Hito A no cambia autenticacion, esquema de usuarios, Robot, RPC ni cliente. Los
+resultados ejecutados y lo pendiente se registran en ESTADO_PROYECTO.md y cada historia.
