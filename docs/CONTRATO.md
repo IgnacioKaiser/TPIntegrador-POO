@@ -159,7 +159,7 @@ En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de
 Todas las operaciones requieren `parametros.credenciales` y rechazan parámetros
 desconocidos. En la tabla se indican solo los parámetros adicionales a las
 credenciales. `ping`, `usuario.actual`, `desconectar`, `estado`, los comandos
-de motores y `ayuda` no aceptan parámetros adicionales.
+de motores, `tarea.listar` y `ayuda` no aceptan parámetros adicionales.
 
 | Operación | Parámetros | Resultado en `OK` | Comportamiento |
 | --- | --- | --- | --- |
@@ -168,6 +168,11 @@ de motores y `ayuda` no aceptan parámetros adicionales.
 | `usuario.actual` | Ninguno | `usuario: string`, `rol: string` | Devuelve únicamente la identidad autenticada de quien realiza el pedido. |
 | `usuario.habilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Habilita un operador; solo administrador. |
 | `usuario.deshabilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Deshabilita un operador; solo administrador. |
+| `tarea.subir` | `nombre: string`, `contenido: string` | `id: string`, `nombre: string`, `propietario: string`, `mensaje: string` | Almacena una tarea del usuario autenticado; no ejecuta órdenes. |
+| `tarea.listar` | Ninguno | `tareas: array` de `struct` | Operador: tareas propias. Administrador: todas. |
+| `log.consultar` | Filtros y paginación opcionales (ver abajo) | `registros: array`, `total: int`, `offset: int`, `mostrados: int` | Consulta del CSV; solo administrador. |
+| `informe.usuarios` | Filtros opcionales (ver abajo) | `usuarios: array`, `total_peticiones: int`, `total_ok: int`, `total_errores: int` | Totales de peticiones por identidad autenticada; solo administrador. |
+| `informe.propio` | `offset: int`, `limite: int`, opcionales | Estado, referencia del periodo, inicio, detalle y totales (ver abajo) | Solo la actividad de la identidad autenticada; ambos roles. |
 | `conectar` | `puerto: string` opcional | `mensaje: string` | Abre el puerto a 115200 baudios, 8N1. Por defecto usa `/dev/ttyACM0` en Linux y `COM3` en Windows. |
 | `desconectar` | Ninguno | `mensaje: string` | Cierra la conexión si está abierta; también es válida si ya estaba desconectado. |
 | `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct`, `modo_trabajo: string`, `modo_coordenadas: string` | Devuelve el estado de conexión y los modos seleccionados. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
@@ -241,6 +246,186 @@ muestra todas sus opciones actuales; con `OPERADOR` omite conectar, desconectar
 y administración de operadores. Si hay un error o falta un rol reconocido no abre
 el menú. Los comandos directos siguen sujetos a los controles del servidor.
 Las operaciones de usuarios se detallan en `docs/backlog/US-05.md`.
+
+### Tareas: almacenamiento y listado
+
+`tarea.subir` acepta exclusivamente nombre y contenido además de las credenciales.
+No acepta propietario, usuario_id, rol ni rutas de escritura. El propietario se
+obtiene del Usuario autenticado, incluso cuando sube el administrador. El contenido
+viaja como string UTF-8, no base64. El servidor aplica las reglas de almacenamiento
+del Hito A: hasta 1 MiB, nombre normalizado a minúsculas de hasta 64 caracteres,
+extensión .gcode/.nc, texto compatible con XML y formato básico G/M. Las reglas
+completas y sus límites se mantienen en `docs/backlog/US-15.md`.
+
+El campo `resultado.id` es el identificador lógico `ID_propietario:nombre`, por
+ejemplo `2:pieza.nc`; no es una ruta y es diferente del id de correlación del sobre.
+`propietario` es el nombre de usuario obtenido del servidor. `OK` confirma que se
+publicó el archivo completo en el almacenamiento, no que sea ejecutable por el robot.
+
+`tarea.listar` responde, por ejemplo:
+
+```python
+{"tareas": [{"id": "2:pieza.nc", "nombre": "pieza.nc", "propietario": "ana"}]}
+```
+
+Cada fila contiene exactamente esos tres strings; no incluye contenido, rutas
+internas ni credenciales. Sin tareas devuelve `{"tareas": []}` con `OK`. Los
+resultados se ordenan por ID numérico de propietario y nombre. Una cuenta
+deshabilitada no puede subir ni listar aunque conserve una consola abierta.
+
+Se reutilizan los códigos: `VALIDACION` para parámetros, nombre, tamaño o contenido
+inválidos; `ESTADO_INVALIDO` para un duplicado del mismo propietario;
+`NO_AUTENTICADO` y `PERMISO_DENEGADO` según las reglas de acceso existentes;
+`ERROR_INTERNO` para fallos de almacenamiento o consulta de propietarios. Un ID de
+carpeta sin usuario en la base produce `ERROR_INTERNO`; esto no detecta IDs
+reutilizados, por lo que base de usuarios y tareas deben respaldarse juntas.
+Un error incluye `resultado.mensaje`, sin revelar contenido ni rutas internas.
+
+El directorio es configuración local: `--tareas-dir carpeta`, predeterminado
+`data/trayectorias`. Subir y listar se resuelven en ServicioProtegido y no se delegan
+a ServicioRobot. No requieren conexión ni un modo del robot. Un proceso escritor
+atiende las solicitudes secuencialmente; no se agregan reintentos automáticos.
+
+### Registro e informes: consultas administrativas
+
+`log.consultar` e `informe.usuarios` conservan el sobre de seis campos y requieren
+las mismas credenciales por solicitud. El servidor autentica y comprueba el rol
+`ADMINISTRADOR` antes de validar filtros o leer el CSV. No requieren conexión al
+robot ni un modo de trabajo particular. `usuario` es un filtro, no la identidad
+de quien consulta, que se obtiene exclusivamente de las credenciales verificadas.
+
+Todos los parámetros de esta tabla son opcionales y se agregan a `credenciales`:
+
+| Parámetro | Tipo XML-RPC | Predeterminado y reglas | Operaciones |
+| --- | --- | --- | --- |
+| `usuario` | `string` | `""`: sin filtro. Hasta 64 bytes; coincidencia exacta, distingue mayúsculas. No exige que la cuenta exista actualmente. | Ambas |
+| `desde` | `string` | `""`: sin límite inferior. Fecha real `AAAA-MM-DD`, año 0001..9999, día completo en UTC incluido. | Ambas |
+| `hasta` | `string` | `""`: sin límite superior. Mismo formato y reglas; si se indican ambas fechas, `desde <= hasta`. | Ambas |
+| `codigo` | `string` | `""`: sin filtro. Hasta 64 bytes; coincidencia exacta. No se restringe a una lista de códigos. | Ambas |
+| `tipo` | `string` | `""`: ambos tipos. Acepta únicamente `PETICION` o `EVENTO` si no está vacío. | Solo `log.consultar` |
+| `offset` | `int` / `i4` | 0; rango 0..100000000. Cantidad de coincidencias que se omiten desde el comienzo. | Solo `log.consultar` |
+| `limite` | `int` / `i4` | 50; rango 1..100. Máximo de registros de la página. | Solo `log.consultar` |
+
+Los filtros se combinan por AND. Omitir un filtro de texto equivale a enviar
+`""`; no se recortan espacios ni se cambian mayúsculas. Para paginar se requieren
+enteros: un `boolean` o `double` no sustituye a un `int`. Un filtro válido sin
+coincidencias produce `OK`, no `RECURSO_NO_ENCONTRADO`.
+
+**Resultado de `log.consultar`:** `registros` es un array de structs con exactamente
+nueve campos `string`: `fecha_hora`, `tipo`, `id_solicitud`, `usuario`,
+`nodo_cliente`, `modulo`, `operacion`, `codigo` y `detalle`. `fecha_hora` usa UTC
+con formato `AAAA-MM-DDTHH:MM:SSZ`. Para `PETICION`, `usuario` queda vacío cuando
+no se logró autenticar una cuenta habilitada; `nodo_cliente` es el valor fijo
+`127.0.0.1` de la escucha local actual. Los eventos no tienen ID de solicitud,
+usuario ni nodo: esos campos son strings vacíos. El detalle es genérico y no
+contiene parámetros, credenciales, hashes ni contenido de tareas.
+
+Se conserva el orden de las filas del archivo, desde las más antiguas agregadas;
+no se ordena por fecha. `total` cuenta todas las coincidencias antes de paginar,
+`offset` repite el desplazamiento pedido y `mostrados` es la longitud de
+`registros`. Sin coincidencias, o si `offset >= total`, el array está vacío y
+`mostrados` vale 0; `total` conserva el total filtrado.
+
+**Resultado de `informe.usuarios`:** `usuarios` es un array de structs con
+`usuario: string`, `peticiones: int`, `exitosas: int` y `rechazadas: int`. Solo
+cuenta filas `PETICION` con usuario autenticado no vacío, después de aplicar los
+filtros; no incluye eventos ni intentos sin identidad verificada. `exitosas`
+cuenta `codigo == "OK"`; `rechazadas` cuenta cualquier otro código, incluidos
+errores de la operación posteriores a la autenticación. Los totales globales son
+`total_peticiones`, `total_ok` y `total_errores`. Las filas se ordenan por nombre
+de usuario según `std::string`; solo aparecen usuarios con coincidencias. Sin
+coincidencias devuelve `usuarios: []` y los tres totales en 0. No tiene paginación
+ni acepta `tipo`, `offset` o `limite`.
+
+Todos los contadores de ambas respuestas son enteros XML-RPC de 32 bits; si
+superan 2147483647 se devuelve ese máximo, sin desbordar. Cada consulta lee el
+CSV completo. La petición de consulta se registra después de preparar su
+respuesta, por lo que no se incluye a sí misma; puede aparecer en una posterior.
+No hay una instantánea estable entre páginas sucesivas mientras se agregan filas.
+
+**Errores de ambas consultas:**
+
+| Código | Causa |
+| --- | --- |
+| `NO_AUTENTICADO` | Credenciales ausentes, usuario inexistente o clave incorrecta. |
+| `PERMISO_DENEGADO` | Cuenta deshabilitada con clave correcta, o cuenta autenticada con rol `OPERADOR`. |
+| `VALIDACION` | Credenciales mal formadas; parámetro desconocido; tipo, fecha, longitud o rango inválidos. |
+| `ERROR_INTERNO` | Fallo al consultar usuarios, registro no configurado o error de lectura/formato del CSV. |
+
+Los errores de aplicación incluyen `resultado.mensaje: string`. Los errores del
+sobre conservan el tratamiento XML-RPC Fault de la sección 9. Un fallo al escribir
+el registro de la petición se advierte en stderr y no reemplaza la respuesta ya
+obtenida ni provoca reintentar la operación.
+
+El informe actual cuenta peticiones acumuladas; no devuelve estado del robot,
+inicio de actividad ni detalle de órdenes desde la última conexión. No equivale
+al reporte completo exigido por la consigna (página 3). Alcance del CSV, eventos
+y limitaciones: [US-18/US-20/US-21](backlog/US-18-20-21.md).
+
+### Informe de actividad propio (US-19)
+
+`informe.propio` conserva los seis campos y la autenticación por solicitud. Está
+disponible para `OPERADOR` y `ADMINISTRADOR` habilitados. El usuario del informe
+proviene exclusivamente de Autenticador. No acepta `usuario`, `rol`, IDs ni otros
+filtros, aunque indiquen la propia cuenta; no modifica los permisos de las
+consultas administrativas anteriores.
+
+Solo admite estos parámetros además de `credenciales`:
+
+| Parámetro | Tipo XML-RPC | Predeterminado | Rango |
+| --- | --- | --- | --- |
+| `offset` | `int` / `i4` | 0 | 0..100000000 |
+| `limite` | `int` / `i4` | 50 | 1..100 |
+
+Booleanos, texto y números decimales no sustituyen a esos enteros. El resultado
+con `OK` contiene exactamente:
+
+| Campo | Tipo | Significado |
+| --- | --- | --- |
+| `usuario` | `string` | Nombre de la identidad autenticada. |
+| `desde` | `string` | Fecha UTC `AAAA-MM-DDTHH:MM:SSZ` del evento de referencia; vacía si no existe. |
+| `referencia` | `string` | `conectar` para la última conexión serie exitosa; `inicio` si se inició el servidor y aún no hubo conexión; vacío si faltan eventos. |
+| `inicio_actividad` | `string` | Fecha UTC de la primera petición propia del periodo, o `""` si no hay. |
+| `estado` | `struct` | Datos de la operación `estado` existente, con sus indicadores de disponibilidad y modos; sin `reporte_firmware`. |
+| `codigo_estado` | `string` | Código de esa consulta interna de estado; permite informar un error parcial sin perder el detalle propio. |
+| `registros` | `array` de `struct` | Las mismas nueve columnas string de `log.consultar`, únicamente filas `PETICION` de la identidad autenticada. |
+| `total` | `int` / `i4` | Cantidad de peticiones propias del periodo entero, antes de paginar. |
+| `errores` | `int` / `i4` | Cantidad de esas peticiones con código distinto de `OK`, antes de paginar. |
+| `offset` | `int` / `i4` | Desplazamiento solicitado. |
+| `mostrados` | `int` / `i4` | Longitud de `registros`. |
+
+El periodo comienza después del evento de conexión exitosa más reciente que
+abre una conexión, o del inicio del servidor si es posterior. Se reconocen los
+eventos por orden de archivo, incluso cuando tienen la misma marca de segundo.
+Un conectar repetido estando conectado o rechazado no reinicia el periodo;
+desconectar tampoco lo borra. Un nuevo inicio invalida la conexión del proceso
+anterior. Si no hay referencia, se usa lo disponible del CSV con fecha y
+referencia vacías. La petición `conectar` que precede al evento de apertura queda
+fuera del periodo nuevo.
+
+Se incluyen consultas y órdenes rechazadas después de autenticar; nunca se
+atribuyen intentos sin identidad verificada a un nombre declarado. El inicio y
+los totales no dependen de la página. Sin actividad: `registros: []`, `total: 0`,
+`errores: 0`, `mostrados: 0`, `inicio_actividad: ""`. Con `offset >= total`, la
+página queda vacía, pero conserva los totales. Se mantiene el orden de archivo,
+la saturación int32 y la escritura posterior a la respuesta: la consulta actual
+no aparece en su propio resultado. No hay instantánea entre páginas.
+
+El estado se obtiene una vez, sin otra petición de aplicación registrada. No se
+requiere conexión serie para consultar. `OK` exterior confirma el informe;
+si falla la lectura serie se conserva el estado parcial con
+`codigo_estado: ERROR_INTERNO`, mensaje genérico y posición no disponible.
+No implica ejecución física ni contiene parámetros, credenciales o contenido.
+
+Errores: `NO_AUTENTICADO` para credenciales ausentes/incorrectas;
+`PERMISO_DENEGADO` para cuenta deshabilitada con clave correcta; `VALIDACION`
+para credenciales mal formadas, campos desconocidos o paginación inválida;
+`ERROR_INTERNO` para fallo de usuarios, registro no configurado o fallo al
+construir el informe. Incluyen `resultado.mensaje` sin rutas internas.
+Los Fault del sobre mantienen su tratamiento. Ver [US-19](backlog/US-19.md)
+para el fundamento del periodo, recorrido, pruebas y límites.
+
+### Control serie existente
 
 El firmware espera `\r` como terminador de comando y responde con líneas de
 texto terminadas en `\r\n`. El servidor elimina los saltos de línea de la

@@ -1,12 +1,15 @@
 """Transporte XML-RPC y servicios del cliente, sin interfaz de consola."""
 
 import math
+from pathlib import Path
 from http.client import HTTPException
 from urllib.parse import urlsplit
 from xml.parsers.expat import ExpatError
 from xmlrpc.client import Fault, ProtocolError, ResponseError, ServerProxy, Transport
 
 from .mensaje import MensajeInvalido, MensajeRPC
+
+MAX_TAREA_BYTES = 1024 * 1024  # Mismo limite que el almacenamiento del servidor.
 
 
 class ErrorComunicacion(RuntimeError):
@@ -96,6 +99,48 @@ class ServiciosPrueba:
 
     def usuario_actual(self) -> MensajeRPC:
         return self._enviar("usuario.actual")
+
+    def subir_tarea(self, nombre: str, contenido: str) -> MensajeRPC:
+        return self._enviar("tarea.subir", {"nombre": nombre, "contenido": contenido})
+
+    def subir_archivo(self, ruta: str) -> MensajeRPC:
+        archivo = Path(ruta)
+        try:
+            if not archivo.is_file():
+                raise ValueError("La ruta local debe corresponder a un archivo regular existente.")
+            if archivo.stat().st_size > MAX_TAREA_BYTES:
+                raise ValueError("El archivo local supera el limite de 1 MiB.")
+            with archivo.open("rb") as entrada:
+                datos = entrada.read(MAX_TAREA_BYTES + 1)
+        except OSError as error:
+            raise ValueError("No se pudo leer el archivo local.") from error
+        # Limitar tambien la lectura si el archivo crecio despues de consultar su tamano.
+        if len(datos) > MAX_TAREA_BYTES:
+            raise ValueError("El archivo local supera el limite de 1 MiB.")
+        try:
+            contenido = datos.decode("utf-8-sig")  # Admite UTF-8 con o sin BOM.
+        except UnicodeDecodeError as error:
+            raise ValueError("El archivo local debe estar codificado en UTF-8.") from error
+        return self.subir_tarea(archivo.name, contenido)
+
+    def listar_tareas(self) -> MensajeRPC:
+        return self._enviar("tarea.listar")
+
+    def actividad_propia(self, offset=0, limite=50) -> MensajeRPC:
+        return self._enviar("informe.propio", {"offset": offset, "limite": limite})
+
+    def informe_usuarios(self, usuario="", desde="", hasta="", codigo="") -> MensajeRPC:
+        datos = {k: v for k, v in {"usuario": usuario, "desde": desde,
+                                  "hasta": hasta, "codigo": codigo}.items() if v}
+        return self._enviar("informe.usuarios", datos)
+
+    def consultar_log(self, usuario="", desde="", hasta="", tipo="", codigo="",
+                      offset=0, limite=50) -> MensajeRPC:
+        datos = {k: v for k, v in {"usuario": usuario, "desde": desde, "hasta": hasta,
+                                  "tipo": tipo, "codigo": codigo}.items() if v}
+        datos["offset"] = offset
+        datos["limite"] = limite
+        return self._enviar("log.consultar", datos)
 
     def conectar(self, puerto: str | None = None) -> MensajeRPC:
         # Al omitir puerto, el servidor elige el predeterminado de su sistema.

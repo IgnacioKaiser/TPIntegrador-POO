@@ -28,6 +28,59 @@ class CliCliente:
     @staticmethod
     def mostrar(respuesta):
         datos = respuesta.resultado
+        if respuesta.codigo == "OK" and respuesta.operacion == "informe.propio":
+            print(f"[OK] Actividad propia de {datos['usuario']} (UTC)")
+            referencia = {"inicio": "inicio del servidor (sin conexion posterior)",
+                          "conectar": "ultima conexion del robot"}.get(
+                              datos['referencia'], "sin referencia disponible")
+            print(f"Periodo: {referencia} | "
+                  f"{datos['desde'] or 'fecha no disponible'}")
+            print(f"Inicio de actividad propia: {datos['inicio_actividad'] or 'sin actividad'}")
+            print(f"Peticiones: {datos['total']} | Errores: {datos['errores']} | "
+                  f"Mostradas: {datos['mostrados']} | Offset: {datos['offset']}")
+            print(f"Estado del robot [{datos['codigo_estado']}]:")
+            CliCliente.mostrar_datos(datos['estado'], 2)
+            if not datos['total']:
+                print("Sin actividad propia en este periodo.")
+            elif not datos['registros']:
+                print("No hay registros en esta pagina; revise el offset.")
+            for fila in datos['registros']:
+                print(f"{fila['fecha_hora']} | {fila['id_solicitud']} | "
+                      f"{fila['operacion']} | {fila['codigo']} | {fila['detalle']}")
+            return
+        if respuesta.codigo == "OK" and respuesta.operacion == "informe.usuarios":
+            print(f"[OK] Peticiones: {datos.get('total_peticiones', 0)}  "
+                  f"Correctas: {datos.get('total_ok', 0)}  "
+                  f"Rechazadas: {datos.get('total_errores', 0)}")
+            print("Usuario | Peticiones | OK | Errores")
+            for fila in datos.get("usuarios", []):
+                print(f"{fila['usuario']} | {fila['peticiones']} | "
+                      f"{fila['exitosas']} | {fila['rechazadas']}")
+            return
+        if respuesta.codigo == "OK" and respuesta.operacion == "log.consultar":
+            print(f"[OK] {datos.get('mostrados', 0)} de {datos.get('total', 0)} "
+                  "entradas (UTC)")
+            for fila in datos.get("registros", []):
+                print(f"{fila['fecha_hora']} | {fila['tipo']} | "
+                      f"{fila['usuario'] or '(sin autenticar)'} | {fila['operacion']} | "
+                      f"{fila['codigo']} | {fila['detalle']}")
+            return
+        if respuesta.operacion == "tarea.listar" and respuesta.codigo == "OK":
+            tareas = datos.get("tareas")
+            if not isinstance(tareas, list) or any(
+                not isinstance(tarea, dict) or set(tarea) != {"id", "nombre", "propietario"}
+                or any(not isinstance(valor, str) for valor in tarea.values()) for tarea in tareas
+            ):
+                raise MensajeInvalido("El servidor no devolvio un listado de tareas valido.")
+            print(f"[OK] {len(tareas)} tareas disponibles.")
+            if not tareas:
+                print("No hay tareas disponibles.")
+            else:
+                print("ID | Nombre | Propietario")
+                for tarea in tareas:
+                    print(f"{tarea['id']} | {tarea['nombre']} | {tarea['propietario']}")
+            print(f"ID de solicitud: {respuesta.id}")
+            return
         # Mostrar el mensaje no debe ocultar datos parciales de un error de estado.
         principal = next((campo for campo in ("mensaje", "texto")
                           if isinstance(datos.get(campo), str)), None)
@@ -62,6 +115,8 @@ class CliCliente:
                       "\n4. Deshabilitar operador (solo administrador)"
                       "\n5. Conectar robot (solo administrador)"
                       "\n6. Desconectar robot (solo administrador)")
+                print("19. Informe de usuarios (solo administrador)"
+                      "\n20. Consultar log CSV (solo administrador)")
             print("7. Consultar estado del robot"
                   "\n8. Activar motores"
                   "\n9. Desactivar motores"
@@ -72,12 +127,15 @@ class CliCliente:
                   "\n14. Mover efector a X, Y, Z"
                   "\n15. Activar efector (cerrar pinza)"
                   "\n16. Desactivar efector (abrir pinza)"
+                  "\n17. Subir archivo de tarea (sin ejecutar)"
+                  "\n18. Listar tareas disponibles"
+                  "\n21. Consultar mi actividad"
                   "\n0. Salir")
             opcion = input("Opcion: ").strip()
             if opcion == "0":
                 return 0
             # Ocultar opciones no reemplaza los permisos comprobados por el servidor.
-            if opcion in ("3", "4", "5", "6") and not administrador:
+            if opcion in ("3", "4", "5", "6", "19", "20") and not administrador:
                 print("Opcion no disponible para este perfil.")
                 continue
             try:
@@ -130,12 +188,30 @@ class CliCliente:
                     self.mostrar(self.servicios.activar_efector())
                 elif opcion == "16":
                     self.mostrar(self.servicios.desactivar_efector())
+                elif opcion == "17":
+                    self.mostrar(self.servicios.subir_archivo(input("Ruta del archivo local: ").strip()))
+                elif opcion == "18":
+                    self.mostrar(self.servicios.listar_tareas())
+                elif opcion == "21":
+                    offset = int(input("Offset (Enter=0): ").strip() or "0")
+                    limite = int(input("Limite (Enter=50, maximo 100): ").strip() or "50")
+                    self.mostrar(self.servicios.actividad_propia(offset, limite))
+                elif opcion in ("19", "20"):
+                    usuario = input("Usuario (Enter=todos): ").strip()
+                    desde = input("Desde AAAA-MM-DD (Enter=sin limite): ").strip()
+                    hasta = input("Hasta AAAA-MM-DD (Enter=sin limite): ").strip()
+                    codigo = input("Codigo (Enter=todos): ").strip().upper()
+                    if opcion == "19":
+                        self.mostrar(self.servicios.informe_usuarios(usuario, desde, hasta, codigo))
+                    else:
+                        tipo = input("Tipo PETICION/EVENTO (Enter=todos): ").strip().upper()
+                        self.mostrar(self.servicios.consultar_log(usuario, desde, hasta, tipo, codigo))
                 else:
                     print("Opcion invalida.")
             except (ErrorComunicacion, MensajeInvalido, ValueError) as error:
                 print(f"Error: {error}", file=sys.stderr)
                 if isinstance(error, ErrorComunicacion):
-                    print("Ejecucion no confirmada. No se reintenta automaticamente.",
+                    print("Resultado no confirmado. No se reintenta automaticamente.",
                           file=sys.stderr)
 
 
@@ -179,6 +255,22 @@ def main(argv=None):
     comandos.add_parser("activar_motores", help="Solicitar activacion de motores")
     comandos.add_parser("desactivar_motores", help="Solicitar desactivacion de motores")
     comandos.add_parser("ayuda", help="Consultar comandos del servidor")
+    subir = comandos.add_parser("subir", help="Almacenar un archivo G-Code sin ejecutarlo")
+    subir.add_argument("ruta", help="Ruta del archivo local UTF-8")
+    comandos.add_parser("tareas", help="Listar tareas segun propietario y rol")
+    actividad = comandos.add_parser("actividad", help="Consultar mi actividad desde la ultima conexion")
+    actividad.add_argument("--offset", type=int, default=0)
+    actividad.add_argument("--limite", type=int, default=50)
+    informes = comandos.add_parser("informe-usuarios", help="Informe global (administrador)")
+    log = comandos.add_parser("log", help="Consultar el CSV (administrador)")
+    for p in (informes, log):
+        p.add_argument("--usuario", default="")
+        p.add_argument("--desde", default="", help="Fecha UTC AAAA-MM-DD")
+        p.add_argument("--hasta", default="", help="Fecha UTC AAAA-MM-DD")
+        p.add_argument("--codigo", default="")
+    log.add_argument("--tipo", default="", choices=("", "PETICION", "EVENTO"))
+    log.add_argument("--limite", type=int, default=50)
+    log.add_argument("--offset", type=int, default=0)
     args = parser.parse_args(argv)
     try:
         usuario = input("Usuario: ").strip()
@@ -210,6 +302,19 @@ def main(argv=None):
             respuesta = servicios.desactivar_efector()
         elif args.comando == "conectar":
             respuesta = servicios.conectar(args.puerto)
+        elif args.comando == "subir":
+            respuesta = servicios.subir_archivo(args.ruta)
+        elif args.comando == "tareas":
+            respuesta = servicios.listar_tareas()
+        elif args.comando == "actividad":
+            respuesta = servicios.actividad_propia(args.offset, args.limite)
+        elif args.comando == "informe-usuarios":
+            respuesta = servicios.informe_usuarios(
+                args.usuario, args.desde, args.hasta, args.codigo)
+        elif args.comando == "log":
+            respuesta = servicios.consultar_log(
+                args.usuario, args.desde, args.hasta, args.tipo,
+                args.codigo, args.offset, args.limite)
         elif args.comando in ("desconectar", "estado", "activar_motores",
                               "desactivar_motores", "ayuda"):
             # Los nombres del comando y del metodo coinciden con el contrato.
@@ -221,7 +326,7 @@ def main(argv=None):
     except (ErrorComunicacion, MensajeInvalido, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         if isinstance(error, ErrorComunicacion):
-            print("Ejecucion no confirmada. No se reintenta automaticamente.",
+            print("Resultado no confirmado. No se reintenta automaticamente.",
                   file=sys.stderr)
         return 1
     except (KeyboardInterrupt, EOFError):

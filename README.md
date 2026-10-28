@@ -6,9 +6,8 @@ Servidor C++ con XmlRpc++ del profesor, cliente Python por consola y firmware or
 
 - `server/xmlrpc/`: biblioteca XmlRpc++ original, licencia y ejemplos, separados del código propio.
 - `server/include/robotrpc/` y `server/src/`: clases de mensajes, servicio y servidor.
-- `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, con adaptacion de fecha/hora para Windows. Se compilan pero todavía no se utilizan para registrar eventos.
+- `server/include/tp2_logger/` y `server/src/tp2_logger/`: logger del TP anterior, conservado y compilado como biblioteca. El CSV de actividad usa `RegistroActividadCsv`, en `server/src/registro_actividad.cpp`.
 - `server/include/domain/Robot.h` y `server/src/domain/Robot.cpp`: conexión serie multiplataforma y comandos enviados al Arduino.
-- `server/include/tp2_logger/` y `server/src/tp2_logger/`: clases del TP anterior, sin modificar. Se compilan pero todavía no se utilizan para registrar eventos.
 - `server/examples/tp2_logger/`: main y datos de ejemplo originales del logger.
 - `server/tests/`: pruebas C++ y de integración cliente-servidor.
 - `server/Makefile`: compilación del servidor, bibliotecas y pruebas.
@@ -95,13 +94,33 @@ Desde la raíz:
 make -C server test
 ```
 
+US-15/US-16/US-24 permiten subir y listar tareas por RPC y desde Python. Las pruebas
+solo del repositorio se ejecutan con `mingw32-make -C server test-tareas` en Windows
+o `make -C server test-tareas` en Linux. La suite completa incluye el recorrido
+Python → servidor C++ → archivos temporales. Ver [US-15](docs/backlog/US-15.md).
+La base de usuarios y las carpetas de tareas por ID deben conservarse juntas para
+mantener sus propietarios; no reinicializar la base dejando las tareas anteriores.
+
+El servidor acepta `--tareas-dir carpeta`; su valor predeterminado es
+`data/trayectorias`. Los comandos del cliente son:
+
+```powershell
+python client/main.py subir "C:\ruta local\pieza.gcode"
+python client/main.py tareas
+```
+
+En Linux usar python3 y una ruta Linux. El menu ofrece las mismas operaciones en
+17/18 para ambos perfiles. Operador ve sus tareas; administrador ve todas. Subir
+no ejecuta ordenes. Para una prueba aislada con dos operadores y un administrador,
+sin usar la base habitual, ver [US-24](docs/backlog/US-24.md).
+
 También se puede ejecutar `make test` estando dentro de server. `make -C server examples` compila los tres ejemplos originales de XmlRpc++ como ejecutables separados. `make -C server clean` elimina server/build. Ctrl+Shift+B en VS Code compila desde server.
 
 ## Alcance conservado
 
 El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, y el servicio conserva el ID de la solicitud en su respuesta. `ServicioRobot` delega las operaciones serie a una instancia de `Robot` compartida por el servidor. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado, seleccionar modos y controlar motores, origen, movimiento cartesiano y efector. Origen, movimiento y efector requieren modo manual y conexión. `estado` informa los modos seleccionados y marca expresamente como no disponibles los datos que el firmware no reporta. Ver `docs/CONTRATO.md` y `docs/backlog/US-10.md` a `US-13.md` para el contrato y las pruebas. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado, seleccionar modos y controlar motores, origen, movimiento cartesiano y efector. Origen, movimiento y efector requieren modo manual y conexión. `estado` informa los modos seleccionados y marca expresamente como no disponibles los datos que el firmware no reporta. Ver `docs/CONTRATO.md` y `docs/backlog/US-10.md` a `US-13.md` para el contrato y las pruebas. El directorio de tareas ya almacena archivos; el registro CSV y las consultas administrativas están implementados en la rama de revisión. Su alcance y pendientes están en [US-18/US-20/US-21](docs/backlog/US-18-20-21.md).
 
 Comandos de control por consola (requieren usuario y clave al iniciar):
 
@@ -124,3 +143,56 @@ Se agrega el modulo de usuarios SQLite y la herramienta local usuarios_admin. Re
 ## US-03: autenticacion de solicitudes
 
 El servidor utiliza la base preparada en US-04 y exige un administrador inicial. Se conserva esa base: no reinicializarla. Ejecutar desde la raiz `server/build/robot_server` (Windows: `.\server\build\robot_server.exe`). Se puede indicar `--db ruta` para elegir otra base. Cada ejecucion del cliente pide usuario y clave; ping y eco ya requieren autenticacion. Ver [US-03](docs/backlog/US-03.md) para cambios, explicaciones y pruebas.
+
+## Registro CSV e informes (US-18/US-20/US-21)
+
+El servidor agrega peticiones y eventos a `data/logs/actividad.csv`, relativo al
+**directorio desde donde se inicia el servidor**. Desde la raíz se guarda en esa
+carpeta del repositorio; si se inicia desde `server`, queda bajo `server/data/logs`.
+El CSV es acumulativo: reiniciar el servidor conserva las filas anteriores. No hay
+rotación ni límite automático de tamaño. Si la ruta de `--db` es distinta de
+`data/db/usuarios.sqlite`, el CSV se guarda como `actividad.csv` junto a esa base.
+No se incluyen datos reales de actividad en Git.
+
+Ejemplos desde la raíz, con el servidor iniciado:
+
+```powershell
+python client/main.py informe-usuarios
+python client/main.py informe-usuarios --usuario operador --desde 2026-10-01 --hasta 2026-10-31
+python client/main.py log --tipo PETICION --codigo NO_AUTENTICADO --limite 20 --offset 0
+python client/main.py log --tipo EVENTO --desde 2026-10-01 --hasta 2026-10-31
+```
+
+En Linux usar `python3`. Cada comando pide usuario y clave. Ambas consultas
+requieren una cuenta habilitada con rol `ADMINISTRADOR`; el servidor comprueba
+ese permiso en cada pedido. El menú ofrece las mismas consultas en 19/20 solo
+al administrador. Las fechas son días completos en UTC, con ambos extremos
+incluidos. Los filtros se combinan; `log` devuelve por defecto hasta 50 filas
+(máximo 100), en orden de archivo. Para la página siguiente se aumenta `--offset`.
+
+El informe resume peticiones por identidad autenticada y cuenta respuestas `OK`
+y errores; no incluye intentos sin identidad verificada ni reemplaza el reporte
+de actividad desde la última conexión. El log permite consultar también esos
+intentos fallidos. No se guardan claves, hashes, parámetros ni contenido G-Code.
+Ver [contrato](docs/CONTRATO.md#registro-e-informes-consultas-administrativas)
+para tipos, filtros, resultados y errores.
+
+## Mi actividad (US-19)
+
+Ambos perfiles pueden consultar su actividad con el comando `actividad` o la
+opción **21** del menú:
+
+```powershell
+python client/main.py actividad
+python client/main.py actividad --offset 50 --limite 50
+```
+
+Muestra el estado actual del robot, la referencia del periodo, el inicio de la
+actividad propia y el detalle de peticiones con cantidades y errores. Usa la última
+conexión serie exitosa; si aún no hubo una desde el arranque, lo indica y usa el
+inicio del servidor. Repetir conectar estando conectado no reinicia el periodo.
+No incluye pedidos de otras cuentas ni la consulta que está respondiendo. Sin
+actividad devuelve cero; sin robot muestra los datos que no están disponibles.
+En Linux usar `python3`. Cada pedido verifica nuevamente usuario, clave y
+habilitación. `log` e `informe-usuarios` siguen siendo administrativos.
+Ver [US-19](docs/backlog/US-19.md) para probar con dos usuarios y datos temporales.
