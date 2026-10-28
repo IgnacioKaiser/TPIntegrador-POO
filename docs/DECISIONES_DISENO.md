@@ -308,3 +308,26 @@ el movimiento podría motivar repetir una orden ya ejecutada. El costo es que
 la auditoría deja de ser completa hasta resolver el fallo. Los errores de creación
 del registro o de escritura de eventos de inicio/cierre pueden impedir el arranque
 o el cierre normal; esos casos no tienen la misma recuperación que una petición.
+
+## D14. Informe propio sin sesiones (US-19)
+
+Fecha: 28/10/2026. Rama `us-19-actividad-propia`, base `1583e31`.
+Se agrega `informe.propio` para ambos roles, con identidad obtenida exclusivamente
+de Autenticador y paginación validada. D06 sigue protegiendo las consultas globales
+para administrador. No se permite elegir otra cuenta mediante parámetros.
+
+Se reutilizan los eventos CSV de inicio, conectar y desconectar para delimitar la
+última conexión serie del robot compartido. La conexión HTTP no es una sesión;
+crear sesiones o registrar otro historial no es necesario para estos criterios.
+El cálculo usa el orden del archivo para distinguir eventos del mismo segundo y
+no reinicia el periodo por repetir un conectar ya conectado. Al iniciar el servidor
+se usa su evento de inicio hasta que se conecte el robot.
+
+El informe combina detalle propio paginado y totales del periodo con una consulta
+del estado existente. Un fallo de estado se informa por separado para conservar
+el historial disponible. No se agregan métricas físicas ni se atribuye actividad
+de otros usuarios. Las consultas se siguen registrando después de responder.
+
+El alcance del detalle seguro, el inicio de actividad y los costos de lectura se
+explican una sola vez en [US-19](backlog/US-19.md); los tipos están en CONTRATO.md.
+Esta ampliación no completa ni cambia el informe global de US-20.

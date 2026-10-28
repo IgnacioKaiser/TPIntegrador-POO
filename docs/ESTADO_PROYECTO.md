@@ -1,10 +1,11 @@
 # Estado del proyecto
 
-Fecha de revision: 28/10/2026. Rama local: `revision-logs-informes`, HEAD `bbb845f`,
-igual a la referencia local `origin/us-18-20-21-logs-informes` al iniciar la revisión.
-El árbol de trabajo estaba limpio. `master` local apunta a `e44e6da`, que integra
-US-15/US-16/US-24; los commits de logs e informes aún no están integrados allí.
-No se hizo fetch, commit, push ni merge en esta revisión documental.
+Fecha de revision: 28/10/2026. Rama local: `us-19-actividad-propia`, creada desde
+`origin/master` (`1583e31`) después de `git fetch origin`. El árbol estaba limpio
+y `master` local coincidía con esa referencia. US-18/US-20/US-21 y su documentación
+ya están integradas en esa base. US-19 está implementada y verificada en esta rama;
+sigue pendiente de integrar a master. En esta etapa solo se crean commits locales,
+sin push ni merge y sin modificar Robot ni firmware.
 
 Este documento es una fotografia, no una declaracion permanente. Antes de una nueva tarea, verificar el commit actual y actualizar lo que cambio.
 
@@ -75,9 +76,10 @@ US-15/US-16/US-24 ya figuran integradas en `master` local mediante `e44e6da`.
   Reemplazar o reinicializar la base puede reutilizar IDs y alterar sus propietarios.
 - firmware/arduino/robotArm_v0.62sim contiene el codigo provisto. No equivale a tener el puerto serie conectado.
 
-## US-18/US-20/US-21 en la rama de revisión
+## US-18/US-20/US-21: integración y revisión documental anterior
 
-Implementado por los commits `b155927` y `bbb845f`: CSV acumulativo con fechas UTC,
+Integrado en master hasta `1583e31` (código `b155927` y `bbb845f`, documentación
+`1583e31`): CSV acumulativo con fechas UTC,
 peticiones aceptadas y rechazadas, eventos de inicio/cierre normal y resultados de
 conectar/desconectar. La identidad solo se guarda tras autenticar una cuenta
 habilitada; no se guardan credenciales ni contenidos. `log.consultar` filtra y
@@ -85,7 +87,7 @@ pagina; `informe.usuarios` resume peticiones por usuario. Ambos exigen administr
 en el servidor; el cliente ofrece comandos y opciones 19/20 del menú. El contrato
 exacto y los límites se mantienen en CONTRATO.md y [US-18/US-20/US-21](backlog/US-18-20-21.md).
 
-Verificaciones realizadas el 28/10/2026 en Windows nativo, desde PowerShell,
+Verificaciones de la revisión documental anterior del 28/10/2026, desde PowerShell,
 con Python 3.14.0 y herramientas MSYS2 UCRT64 (g++ disponible: 15.2.0):
 
 - Revisión de código de almacenamiento, acceso protegido, servidor, cliente y
@@ -99,11 +101,10 @@ con Python 3.14.0 y herramientas MSYS2 UCRT64 (g++ disponible: 15.2.0):
   3 pruebas correctas con transporte simulado; comprueban filtros, paginación y
   omisión de filtros vacíos. No prueban el servidor real.
 
-No se ejecutó la suite completa, una compilación limpia, Linux, Arduino ni las
-consultas nuevas contra un servidor real en esta revisión. Las pruebas existentes
-revisadas no verifican extremo a extremo los permisos ni los resultados de estas
-dos consultas. Los datos usados por la prueba CSV son temporales; no se tocaron
-usuarios, trayectorias ni CSV reales.
+Aquella revisión no ejecutó suite completa ni consultas contra servidor real. La
+etapa US-19 descrita abajo agrega regresión completa y comprobaciones reales de
+permisos y conservación del informe global; no certifica todos los criterios
+de US-18/US-20/US-21. Los datos de pruebas son temporales.
 
 Pendientes antes de declarar completas estas historias: comprobar criterios de
 aceptación y recorrido real Python → C++ → CSV para ambas consultas, permisos,
@@ -111,20 +112,52 @@ fechas y límites; verificar ausencia de secretos en los registros y eventos de
 inicio/cierre normal. La lectura de código por sí sola no certifica esos resultados.
 La consigna (página 3) pide además estado, inicio de actividad y detalle de órdenes
 con errores desde la última conexión; el resumen actual no devuelve esos datos.
-Revisar ese alcance de US-20 junto al reporte de US-19, que sigue pendiente.
+US-19 agrega ese reporte para la identidad propia. Completar la misma información
+en el informe global de US-20 sigue pendiente y queda fuera de esta etapa.
 El parser no registra solicitudes que fallan antes de construir MensajeRPC;
 no hay auditoría completa ante fallo de escritura ni garantía de cierre ante
 terminación forzada. No hay rotación, índice ni soporte de varios procesos
 escribiendo el mismo CSV. `nodo_cliente` es fijo para la escucha loopback actual.
 
+## US-19: actividad propia implementada y verificada
+
+Implementación, contrato y pruebas guardados en el commit local `f9e7cc6`.
+
+`informe.propio` obtiene la identidad de Autenticador y permite a ambos roles
+consultar solo sus peticiones. Rechaza usuario, rol, IDs y filtros adicionales;
+acepta únicamente la paginación existente. RegistroActividadCsv calcula el periodo
+mediante eventos de conexión/desconexión e inicio, sin otro registro ni sesiones.
+El informe reúne estado actual, inicio propio, detalle y cantidades con errores.
+La consulta en curso no se incluye a sí misma. El cliente ofrece `actividad` y
+opción 21 para ambos perfiles. Ver [US-19](backlog/US-19.md) para criterios,
+decisiones, clases, prueba manual y límites; CONTRATO.md contiene los tipos.
+
+Verificaciones ejecutadas en esta etapa: `mingw32-make -C server test`, en
+Windows nativo/PowerShell, MSYS2 UCRT64/g++ 15.2.0 y Python 3.14.0. Se recompilaron
+los archivos afectados y pasaron dominio, usuarios, autenticación, 59 comprobaciones
+de tareas, CSV, 49 pruebas Python de cliente y 35 de integración con C++ real.
+Dos casos de enlaces simbólicos de tareas omitidos por permisos/plataforma.
+La regresión incluye aislamiento entre dos operadores, consulta propia del admin,
+permisos globales conservados, actividad vacía, límites, credenciales, cuenta
+deshabilitada, persistencia global tras reinicio y comando/menú reales. El CSV,
+las bases y las carpetas de tareas son temporales. El servicio espía cubre estado
+parcial y ausencia de consultas del robot en pedidos rechazados.
+
+Los criterios de US-19 están cubiertos con la interpretación documentada de
+conexión serie y detalle seguro. No se ejecutaron Linux ni hardware. La conexión
+exitosa y sus fronteras se prueban con eventos sintéticos del CSV, no con Arduino.
+No se afirma que el informe mida movimiento físico. Se heredan el barrido completo,
+la ausencia de instantánea entre páginas y las limitaciones ante fallos de registro.
+US-19 no está integrada a master.
+
 ## Trabajo paralelo y pendientes generales
 
-Esta tarea solo actualiza documentación de US-18/US-20/US-21. No modifica interfaces
-compartidas con el robot ni presupone el trabajo local de otros integrantes.
-Pendientes generales: enseñanza de trayectorias y ejecución automática; reporte
-US-19 y alcance restante de informes; CLI administrativa completa; coordinación
-de acceso; entrega y diagramas. La US-23 completa sigue abierta.
-La integración de logs e informes a master sigue pendiente de revisión del equipo.
+No se presupone el trabajo local de otros integrantes. Esta etapa no cambia
+interfaces de Robot ni firmware. Pendientes: enseñanza de trayectorias y ejecución
+automática; alcance restante del informe global US-20; CLI administrativa completa;
+coordinación de acceso; entrega y diagramas. La US-23 completa sigue abierta.
+La integración a master de US-19 queda a cargo del usuario después de revisar
+los commits y comprobar que origin/master no haya avanzado de forma incompatible.
 
 ## Entorno y comandos base
 Windows del usuario: PowerShell, g++ MSYS2 UCRT64 en C:/msys64/ucrt64/bin, mingw32-make y Python 3.14. Dependencias: SQLite y libsodium UCRT64.

@@ -176,3 +176,23 @@ de actividad desde la última conexión. El log permite consultar también esos
 intentos fallidos. No se guardan claves, hashes, parámetros ni contenido G-Code.
 Ver [contrato](docs/CONTRATO.md#registro-e-informes-consultas-administrativas)
 para tipos, filtros, resultados y errores.
+
+## Mi actividad (US-19)
+
+Ambos perfiles pueden consultar su actividad con el comando `actividad` o la
+opción **21** del menú:
+
+```powershell
+python client/main.py actividad
+python client/main.py actividad --offset 50 --limite 50
+```
+
+Muestra el estado actual del robot, la referencia del periodo, el inicio de la
+actividad propia y el detalle de peticiones con cantidades y errores. Usa la última
+conexión serie exitosa; si aún no hubo una desde el arranque, lo indica y usa el
+inicio del servidor. Repetir conectar estando conectado no reinicia el periodo.
+No incluye pedidos de otras cuentas ni la consulta que está respondiendo. Sin
+actividad devuelve cero; sin robot muestra los datos que no están disponibles.
+En Linux usar `python3`. Cada pedido verifica nuevamente usuario, clave y
+habilitación. `log` e `informe-usuarios` siguen siendo administrativos.
+Ver [US-19](docs/backlog/US-19.md) para probar con dos usuarios y datos temporales.
