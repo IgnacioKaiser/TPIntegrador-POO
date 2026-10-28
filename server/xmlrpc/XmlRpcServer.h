@@ -82,7 +82,7 @@ namespace XmlRpc {
     virtual void acceptConnection();
 
     //! Create a new connection object for processing requests from a specific client.
-    virtual XmlRpcServerConnection* createConnection(int socket);
+    virtual XmlRpcServerConnection* createConnection(SocketHandle socket);
 
     // Whether the introspection API is supported by this server
     bool _introspectionEnabled;

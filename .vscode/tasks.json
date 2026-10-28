@@ -14,19 +14,28 @@
       ],
       "options": {
         "cwd": "${workspaceFolder}/server"
+      },
+      "windows": {
+        "command": "mingw32-make"
       }
     },
     {
       "label": "Probar",
       "type": "shell",
-      "command": "make test",
+      "command": "make",
       "group": "test",
       "problemMatcher": [
         "$gcc"
       ],
       "options": {
         "cwd": "${workspaceFolder}/server"
-      }
+      },
+      "windows": {
+        "command": "mingw32-make"
+      },
+      "args": [
+        "test"
+      ]
     }
   ]
 }

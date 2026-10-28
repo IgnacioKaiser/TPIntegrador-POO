@@ -51,7 +51,7 @@ XmlRpcClient::~XmlRpcClient()
 void 
 XmlRpcClient::close()
 {
-  XmlRpcUtil::log(4, "XmlRpcClient::close: fd %d.", getfd());
+  XmlRpcUtil::log(4, "XmlRpcClient::close: fd %llu.", static_cast<unsigned long long>(getfd()));
   _connectionState = NO_CONNECTION;
   _disp.exit();
   _disp.removeSource(this);
@@ -165,14 +165,14 @@ XmlRpcClient::setupConnection()
 bool 
 XmlRpcClient::doConnect()
 {
-  int fd = XmlRpcSocket::socket();
-  if (fd < 0)
+  SocketHandle fd = XmlRpcSocket::socket();
+  if (fd == InvalidSocket)
   {
     XmlRpcUtil::error("Error in XmlRpcClient::doConnect: Could not create socket (%s).", XmlRpcSocket::getErrorMsg().c_str());
     return false;
   }
 
-  XmlRpcUtil::log(3, "XmlRpcClient::doConnect: fd %d.", fd);
+  XmlRpcUtil::log(3, "XmlRpcClient::doConnect: fd %llu.", static_cast<unsigned long long>(fd));
   this->setfd(fd);
 
   // Don't block on connect/reads/writes
@@ -248,7 +248,7 @@ XmlRpcClient::generateHeader(std::string const& body)
   header += buff;
   header += "Content-Type: text/xml\r\nContent-length: ";
 
-  sprintf(buff,"%lu\r\n\r\n", body.size());
+  sprintf(buff, "%zu\r\n\r\n", body.size());
 
   return header + buff;
 }
@@ -295,8 +295,8 @@ XmlRpcClient::readHeader()
       return setupConnection();
     }
 
-    XmlRpcUtil::error("Error in XmlRpcClient::readHeader: error while reading header (%s) on fd %d.",
-                      XmlRpcSocket::getErrorMsg().c_str(), getfd());
+    XmlRpcUtil::error("Error in XmlRpcClient::readHeader: error while reading header (%s) on fd %llu.",
+                      XmlRpcSocket::getErrorMsg().c_str(), static_cast<unsigned long long>(getfd()));
     return false;
   }
 

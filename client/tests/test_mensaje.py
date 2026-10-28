@@ -1,31 +1,73 @@
-import unittest
+"""Pruebas unitarias locales: no necesitan servidor ni conexion de red."""
 
-from robot_client.cliente import ClienteXmlRpc
+import unittest
+from unittest.mock import patch
+
+from robot_client.cliente import (ClienteXmlRpc, ErrorComunicacion,
+                                  ServiciosPrueba)
 from robot_client.mensaje import MensajeInvalido, MensajeRPC
 
 
 class MensajeTests(unittest.TestCase):
-    def test_objeto_conserva_contenido_y_id(self):
-        original = MensajeRPC.solicitud("eco", "¡Hola! <robot> & pinza")
+    def test_solicitud_y_serializacion(self):
+        original = MensajeRPC.solicitud("eco", {"texto": "Hola <robot> & pinza"})
+        self.assertEqual(original.tipo, "solicitud")
+        self.assertEqual(original.parametros["texto"], "Hola <robot> & pinza")
+        self.assertEqual(original.resultado, {})
+        self.assertEqual(original.codigo, "")
+        self.assertEqual(set(original.serializar()), {
+            "id", "tipo", "operacion", "parametros", "resultado", "codigo"
+        })
         self.assertEqual(MensajeRPC.deserializar(original.serializar()), original)
 
-    def test_rechaza_contratos_incompatibles(self):
-        original = MensajeRPC.solicitud("ping").serializar()
-        for cambio in ({"version": "2"}, {"id": ""}, {"contenido": 10},
-                       {"tipo": "desconocido"}, {"codigo": "OK"}, {"extra": "campo"}):
+    def test_respuesta_conserva_id_y_operacion(self):
+        solicitud = MensajeRPC.solicitud("ping")
+        respuesta = MensajeRPC.respuesta_a(solicitud, {"mensaje": "pong"})
+        self.assertEqual(respuesta.id, solicitud.id)
+        self.assertEqual(respuesta.operacion, "ping")
+        self.assertEqual(respuesta.codigo, "OK")
+        self.assertEqual(respuesta.parametros, {})
+        self.assertEqual(respuesta.resultado["mensaje"], "pong")
+
+    def test_rechaza_campos_incompatibles(self):
+        base = MensajeRPC.solicitud("ping").serializar()
+        for cambio in ({"version": "2"}, {"id": ""}, {"tipo": "desconocido"},
+                       {"codigo": "OK"}, {"parametros": []},
+                       {"resultado": {"mensaje": "no corresponde"}},
+                       {"extra": "campo"}):
             with self.subTest(cambio=cambio), self.assertRaises(MensajeInvalido):
-                MensajeRPC.deserializar(original | cambio)
+                MensajeRPC.deserializar(base | cambio)
 
     def test_rechaza_campo_faltante(self):
         campos = MensajeRPC.solicitud("ping").serializar()
-        del campos["contenido"]
+        del campos["resultado"]
         with self.assertRaises(MensajeInvalido):
             MensajeRPC.deserializar(campos)
 
-    def test_limite_en_bytes_utf8(self):
-        MensajeRPC.solicitud("eco", "ñ" * 4096)
-        with self.assertRaises(MensajeInvalido):
-            MensajeRPC.solicitud("eco", "ñ" * 4097)
+    def test_rechaza_tipos_y_nombres_invalidos(self):
+        for datos in ({"posicion": None}, {"fecha": (1, 2)},
+                      {"incorrecto-nombre": 10}, {"numero": 2**40},
+                      {"numero": float("nan")}, {"numero": float("inf")}):
+            with self.subTest(datos=datos), self.assertRaises(MensajeInvalido):
+                MensajeRPC.solicitud("eco", datos)
+
+    def test_admite_valores_tipados_y_anidados(self):
+        parametros = {
+            "x": 12.5, "velocidad": 50, "habilitado": True,
+            "puntos": [1.0, 2.0], "config": {"modo": "prueba"}
+        }
+        solicitud = MensajeRPC.solicitud("mover", parametros)
+        self.assertEqual(solicitud.parametros, parametros)
+        parametros["config"]["modo"] = "modificado"
+        self.assertEqual(solicitud.parametros["config"]["modo"], "prueba")
+        salida = solicitud.serializar()
+        salida["parametros"]["puntos"].append(3.0)
+        self.assertEqual(solicitud.parametros["puntos"], [1.0, 2.0])
+
+    def test_rechaza_texto_xml_invalido(self):
+        for texto in ("\x00", "\uffff", "\ud800"):
+            with self.subTest(texto=repr(texto)), self.assertRaises(MensajeInvalido):
+                MensajeRPC.solicitud("eco", {"texto": texto})
 
     def test_rechaza_configuracion_invalida(self):
         for timeout in (0, -1, float("nan"), float("inf")):
@@ -34,10 +76,25 @@ class MensajeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ClienteXmlRpc("ftp://localhost/RPC2")
 
-    def test_rechaza_texto_fuera_del_contrato(self):
-        for texto in ("🤖", "\x00", "\uffff", "\ud800"):
-            with self.subTest(texto=repr(texto)), self.assertRaises(MensajeInvalido):
-                MensajeRPC.solicitud("eco", texto)
+    def test_servicios_forman_parametros_con_nombre(self):
+        class ClienteFalso:
+            def enviar(self, solicitud):
+                self.solicitud = solicitud
+                return MensajeRPC.respuesta_a(solicitud, {"texto": "OK"})
+        cliente = ClienteFalso()
+        ServiciosPrueba(cliente, "operador", "ClavePrueba1").eco("Hola")
+        self.assertEqual(cliente.solicitud.parametros, {"texto": "Hola", "credenciales": {"usuario": "operador", "clave": "ClavePrueba1"}})
+        ServiciosPrueba(cliente, "operador", "ClavePrueba1").ping()
+        self.assertEqual(cliente.solicitud.parametros, {"credenciales": {"usuario": "operador", "clave": "ClavePrueba1"}})
+
+    def test_cliente_verifica_correlacion_de_respuesta(self):
+        solicitud = MensajeRPC.solicitud("ping")
+        respuesta = MensajeRPC.respuesta_a(solicitud, {"mensaje": "pong"}).serializar()
+        respuesta["id"] = "otro"
+        with patch("robot_client.cliente.ServerProxy") as remoto:
+            remoto.return_value.__enter__.return_value.robot.intercambiar.return_value = respuesta
+            with self.assertRaises(ErrorComunicacion):
+                ClienteXmlRpc().enviar(solicitud)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,21 @@
       "compilerPath": "/usr/bin/g++",
       "cppStandard": "c++17",
       "intelliSenseMode": "linux-gcc-x64"
+    },
+    {
+      "name": "Windows",
+      "includePath": [
+        "${workspaceFolder}/server/include",
+        "${workspaceFolder}/server/xmlrpc",
+        "${workspaceFolder}/server/include/tp2_logger"
+      ],
+      "compilerPath": "C:/msys64/ucrt64/bin/g++.exe",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "windows-gcc-x64",
+      "defines": [
+        "_WINDOWS",
+        "NOMINMAX"
+      ]
     }
   ],
   "version": 4

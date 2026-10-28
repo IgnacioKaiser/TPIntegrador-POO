@@ -87,10 +87,10 @@ XmlRpcDispatch::work(double timeout)
 	  FD_ZERO(&outFd);
 	  FD_ZERO(&excFd);
 
-    int maxFd = -1;     // Not used on windows
+    SocketHandle maxFd = 0;     // Not used on windows
     SourceList::iterator it;
     for (it=_sources.begin(); it!=_sources.end(); ++it) {
-      int fd = it->getSource()->getfd();
+      SocketHandle fd = it->getSource()->getfd();
       if (it->getMask() & ReadableEvent) FD_SET(fd, &inFd);
       if (it->getMask() & WritableEvent) FD_SET(fd, &outFd);
       if (it->getMask() & Exception)     FD_SET(fd, &excFd);
@@ -99,14 +99,19 @@ XmlRpcDispatch::work(double timeout)
 
     // Check for events
     int nEvents;
+#ifdef _WIN32
+    const int nfds = 0; // Winsock ignora este argumento de select.
+#else
+    const int nfds = maxFd + 1;
+#endif
     if (timeout < 0.0)
-      nEvents = select(maxFd+1, &inFd, &outFd, &excFd, NULL);
+      nEvents = select(nfds, &inFd, &outFd, &excFd, NULL);
     else 
     {
       struct timeval tv;
       tv.tv_sec = (int)floor(timeout);
       tv.tv_usec = ((int)floor(1000000.0 * (timeout-floor(timeout)))) % 1000000;
-      nEvents = select(maxFd+1, &inFd, &outFd, &excFd, &tv);
+      nEvents = select(nfds, &inFd, &outFd, &excFd, &tv);
     }
 
     if (nEvents < 0)
@@ -121,7 +126,7 @@ XmlRpcDispatch::work(double timeout)
     {
       SourceList::iterator thisIt = it++;
       XmlRpcSource* src = thisIt->getSource();
-      int fd = src->getfd();
+      SocketHandle fd = src->getfd();
       unsigned newMask = (unsigned) -1;
       if (fd <= maxFd) {
         // If you select on multiple event types this could be ambiguous

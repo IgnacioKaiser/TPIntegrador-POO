@@ -5,7 +5,6 @@
 #ifndef MAKEDEPEND
 #include <strings.h>
 #include <string.h>
-using namespace std;
 
 #if defined(_WINDOWS)
 # include <stdio.h>
@@ -13,9 +12,6 @@ using namespace std;
 # include <winsock2.h>
 //# pragma lib(WS2_32.lib)
 
-# define EINPROGRESS	WSAEINPROGRESS
-# define EWOULDBLOCK	WSAEWOULDBLOCK
-# define ETIMEDOUT	    WSAETIMEDOUT
 #else
 extern "C" {
 # include <unistd.h>
@@ -67,7 +63,11 @@ nonFatalError()
 
   int err = XmlRpcSocket::getError();
 
-  return (err == EINPROGRESS || err == EAGAIN || err == EWOULDBLOCK || err == EINTR);
+#if defined(_WINDOWS)
+  return err == WSAEINPROGRESS || err == WSAEWOULDBLOCK || err == WSAEINTR;
+#else
+  return err == EINPROGRESS || err == EAGAIN || err == EWOULDBLOCK || err == EINTR;
+#endif
 
 }
 
@@ -76,18 +76,18 @@ nonFatalError()
 
 
 
-int
+SocketHandle
 XmlRpcSocket::socket()
 {
   initWinSock();
-  return (int) ::socket(AF_INET, SOCK_STREAM, 0);
+  return (SocketHandle) ::socket(AF_INET, SOCK_STREAM, 0);
 }
 
 
 void
-XmlRpcSocket::close(int fd)
+XmlRpcSocket::close(SocketHandle fd)
 {
-  XmlRpcUtil::log(4, "XmlRpcSocket::close: fd %d.", fd);
+  XmlRpcUtil::log(4, "XmlRpcSocket::close: fd %llu.", static_cast<unsigned long long>(fd));
 #if defined(_WINDOWS)
   closesocket(fd);
 #else
@@ -99,7 +99,7 @@ XmlRpcSocket::close(int fd)
 
 
 bool
-XmlRpcSocket::setNonBlocking(int fd)
+XmlRpcSocket::setNonBlocking(SocketHandle fd)
 {
 #if defined(_WINDOWS)
   unsigned long flag = 1;
@@ -111,7 +111,7 @@ XmlRpcSocket::setNonBlocking(int fd)
 
 
 bool
-XmlRpcSocket::setReuseAddr(int fd)
+XmlRpcSocket::setReuseAddr(SocketHandle fd)
 {
   // Allow this port to be re-bound immediately so server re-starts are not delayed
   int sflag = 1;
@@ -121,7 +121,7 @@ XmlRpcSocket::setReuseAddr(int fd)
 
 // Bind to a specified port
 bool 
-XmlRpcSocket::bind(int fd, int port)
+XmlRpcSocket::bind(SocketHandle fd, int port)
 {
   struct sockaddr_in saddr;
   memset(&saddr, 0, sizeof(saddr));
@@ -134,14 +134,14 @@ XmlRpcSocket::bind(int fd, int port)
 
 // Set socket in listen mode
 bool 
-XmlRpcSocket::listen(int fd, int backlog)
+XmlRpcSocket::listen(SocketHandle fd, int backlog)
 {
   return (::listen(fd, backlog) == 0);
 }
 
 
-int
-XmlRpcSocket::accept(int fd)
+SocketHandle
+XmlRpcSocket::accept(SocketHandle fd)
 {
   struct sockaddr_in addr;
 #if defined(_WINDOWS)
@@ -151,14 +151,14 @@ XmlRpcSocket::accept(int fd)
 #endif
     addrlen = sizeof(addr);
 
-  return (int) ::accept(fd, (struct sockaddr*)&addr, &addrlen);
+  return (SocketHandle) ::accept(fd, (struct sockaddr*)&addr, &addrlen);
 }
 
 
     
 // Connect a socket to a server (from a client)
 bool
-XmlRpcSocket::connect(int fd, std::string& host, int port)
+XmlRpcSocket::connect(SocketHandle fd, std::string& host, int port)
 {
   struct sockaddr_in saddr;
   memset(&saddr, 0, sizeof(saddr));
@@ -181,7 +181,7 @@ XmlRpcSocket::connect(int fd, std::string& host, int port)
 
 // Read available text from the specified socket. Returns false on error.
 bool 
-XmlRpcSocket::nbRead(int fd, std::string& s, bool *eof)
+XmlRpcSocket::nbRead(SocketHandle fd, std::string& s, bool *eof)
 {
   const int READ_SIZE = 4096;   // Number of bytes to attempt to read at a time
   char readBuf[READ_SIZE];
@@ -215,7 +215,7 @@ XmlRpcSocket::nbRead(int fd, std::string& s, bool *eof)
 
 // Write text to the specified socket. Returns false on error.
 bool 
-XmlRpcSocket::nbWrite(int fd, std::string& s, int *bytesSoFar)
+XmlRpcSocket::nbWrite(SocketHandle fd, std::string& s, int *bytesSoFar)
 {
   int nToWrite = int(s.length()) - *bytesSoFar;
   char *sp = const_cast<char*>(s.c_str()) + *bytesSoFar;

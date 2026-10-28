@@ -5,20 +5,27 @@
 int main(int argc, char* argv[]) {
     try {
         unsigned long puerto = 8080;
+        std::string ruta = "data/db/usuarios.sqlite";
+        std::string tareas = "data/trayectorias";
+        const char* uso = "Uso: robot_server [--port 8080] [--db ruta] [--tareas-dir carpeta]";
         if (argc == 2 && std::string(argv[1]) == "--help") {
-            std::cout << "Uso: robot_server [--port 8080]\n";
+            std::cout << uso << '\n';
             return 0;
         }
-        if (argc != 1) {
-            if (argc != 3 || std::string(argv[1]) != "--port")
-                throw std::invalid_argument("Uso: robot_server [--port 8080]");
-            const std::string argumento = argv[2];
-            std::size_t leidos = 0;
-            puerto = std::stoul(argumento, &leidos);
-            if (leidos != argumento.size() || puerto < 1 || puerto > 65535)
-                throw std::invalid_argument("El puerto debe estar entre 1 y 65535.");
+        for (int i = 1; i < argc; i += 2) {
+            if (i + 1 >= argc) throw std::invalid_argument(uso);
+            const std::string opcion = argv[i];
+            const std::string argumento = argv[i + 1];
+            if (opcion == "--db") ruta = argumento;
+            else if (opcion == "--tareas-dir") tareas = argumento;
+            else if (opcion == "--port") {
+                std::size_t leidos = 0;
+                puerto = std::stoul(argumento, &leidos);
+                if (leidos != argumento.size() || puerto < 1 || puerto > 65535)
+                    throw std::invalid_argument("El puerto debe estar entre 1 y 65535.");
+            } else throw std::invalid_argument(uso);
         }
-        robotrpc::ServidorXmlRpc servidor(static_cast<unsigned short>(puerto));
+        robotrpc::ServidorXmlRpc servidor(static_cast<unsigned short>(puerto), ruta, tareas);
         servidor.ejecutar();
         return 0;
     } catch (const std::exception& error) {

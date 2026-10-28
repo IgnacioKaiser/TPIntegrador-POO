@@ -23,10 +23,12 @@ std::string Logger_396::current_timestamp() const
 
     std::tm time_info;
 
-    localtime_r(
-        &now,
-        &time_info
-    );
+#ifdef _WIN32
+    if (localtime_s(&time_info, &now) != 0)
+#else
+    if (localtime_r(&now, &time_info) == nullptr)
+#endif
+        throw LoggerException("No se pudo obtener la fecha y hora local.");
 
 
     std::stringstream ss;
