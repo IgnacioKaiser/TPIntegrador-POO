@@ -28,6 +28,22 @@ class CliCliente:
     @staticmethod
     def mostrar(respuesta):
         datos = respuesta.resultado
+        if respuesta.operacion == "tarea.listar" and respuesta.codigo == "OK":
+            tareas = datos.get("tareas")
+            if not isinstance(tareas, list) or any(
+                not isinstance(tarea, dict) or set(tarea) != {"id", "nombre", "propietario"}
+                or any(not isinstance(valor, str) for valor in tarea.values()) for tarea in tareas
+            ):
+                raise MensajeInvalido("El servidor no devolvio un listado de tareas valido.")
+            print(f"[OK] {len(tareas)} tareas disponibles.")
+            if not tareas:
+                print("No hay tareas disponibles.")
+            else:
+                print("ID | Nombre | Propietario")
+                for tarea in tareas:
+                    print(f"{tarea['id']} | {tarea['nombre']} | {tarea['propietario']}")
+            print(f"ID de solicitud: {respuesta.id}")
+            return
         # Mostrar el mensaje no debe ocultar datos parciales de un error de estado.
         principal = next((campo for campo in ("mensaje", "texto")
                           if isinstance(datos.get(campo), str)), None)
@@ -72,6 +88,8 @@ class CliCliente:
                   "\n14. Mover efector a X, Y, Z"
                   "\n15. Activar efector (cerrar pinza)"
                   "\n16. Desactivar efector (abrir pinza)"
+                  "\n17. Subir archivo de tarea (sin ejecutar)"
+                  "\n18. Listar tareas disponibles"
                   "\n0. Salir")
             opcion = input("Opcion: ").strip()
             if opcion == "0":
@@ -130,12 +148,16 @@ class CliCliente:
                     self.mostrar(self.servicios.activar_efector())
                 elif opcion == "16":
                     self.mostrar(self.servicios.desactivar_efector())
+                elif opcion == "17":
+                    self.mostrar(self.servicios.subir_archivo(input("Ruta del archivo local: ").strip()))
+                elif opcion == "18":
+                    self.mostrar(self.servicios.listar_tareas())
                 else:
                     print("Opcion invalida.")
             except (ErrorComunicacion, MensajeInvalido, ValueError) as error:
                 print(f"Error: {error}", file=sys.stderr)
                 if isinstance(error, ErrorComunicacion):
-                    print("Ejecucion no confirmada. No se reintenta automaticamente.",
+                    print("Resultado no confirmado. No se reintenta automaticamente.",
                           file=sys.stderr)
 
 
@@ -179,6 +201,9 @@ def main(argv=None):
     comandos.add_parser("activar_motores", help="Solicitar activacion de motores")
     comandos.add_parser("desactivar_motores", help="Solicitar desactivacion de motores")
     comandos.add_parser("ayuda", help="Consultar comandos del servidor")
+    subir = comandos.add_parser("subir", help="Almacenar un archivo G-Code sin ejecutarlo")
+    subir.add_argument("ruta", help="Ruta del archivo local UTF-8")
+    comandos.add_parser("tareas", help="Listar tareas segun propietario y rol")
     args = parser.parse_args(argv)
     try:
         usuario = input("Usuario: ").strip()
@@ -210,6 +235,10 @@ def main(argv=None):
             respuesta = servicios.desactivar_efector()
         elif args.comando == "conectar":
             respuesta = servicios.conectar(args.puerto)
+        elif args.comando == "subir":
+            respuesta = servicios.subir_archivo(args.ruta)
+        elif args.comando == "tareas":
+            respuesta = servicios.listar_tareas()
         elif args.comando in ("desconectar", "estado", "activar_motores",
                               "desactivar_motores", "ayuda"):
             # Los nombres del comando y del metodo coinciden con el contrato.
@@ -221,7 +250,7 @@ def main(argv=None):
     except (ErrorComunicacion, MensajeInvalido, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         if isinstance(error, ErrorComunicacion):
-            print("Ejecucion no confirmada. No se reintenta automaticamente.",
+            print("Resultado no confirmado. No se reintenta automaticamente.",
                   file=sys.stderr)
         return 1
     except (KeyboardInterrupt, EOFError):

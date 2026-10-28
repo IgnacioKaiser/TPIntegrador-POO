@@ -94,10 +94,11 @@ private:
 
 } // namespace
 
-ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto, const std::string& ruta)
+ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto, const std::string& ruta,
+                               const std::string& directorioTareas)
     : puerto_(puerto), usuarios_(ruta), autenticador_(usuarios_),
-      robot_(), servicio_(robot_),
-      protegido_(autenticador_, servicio_, usuarios_) {
+      robot_(), servicio_(robot_), tareas_(directorioTareas),
+      protegido_(autenticador_, servicio_, usuarios_, tareas_) {
     int administradores = 0;
     for (const auto& usuario : usuarios_.listar())
         if (usuario.rol == Rol::ADMINISTRADOR && usuario.habilitado) ++administradores;
@@ -125,7 +126,7 @@ void ServidorXmlRpc::ejecutar() {
     std::cout << "Servidor XML-RPC\n"
               << "Direccion: http://127.0.0.1:" << puerto_ << "/RPC2\n"
               << "Operaciones protegidas: ping, eco, control del robot y "
-                 "administracion de operadores. Cerrar con Ctrl+C."
+                 "administracion de operadores y tareas. Cerrar con Ctrl+C."
               << std::endl;
     while (!detener)
         servidor.work(0.1);

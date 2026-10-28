@@ -67,7 +67,7 @@ $(RPC_LIB): $(RPC_OBJECTS)
 	$(AR) rcs $(call argumento_ruta,$@) $(foreach archivo,$^,$(call argumento_ruta,$(archivo)))
 $(LOG_LIB): $(LOG_OBJECTS)
 	$(AR) rcs $(call argumento_ruta,$@) $(foreach archivo,$^,$(call argumento_ruta,$(archivo)))
-$(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o
+$(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(LDLIBS) $(USER_LIBS)
 build/%.o: %.cpp
 	$(crear_directorio)
@@ -92,7 +92,7 @@ $(USER_TEST): build/tests/test_usuarios.o $(USER_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(USER_LIBS)
 test-usuarios: $(USER_TOOL) $(USER_TEST)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_usuarios.py)
-build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
+build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(USER_LIBS)
 test-autenticacion: build/test_autenticacion$(EXE)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_autenticacion.py)

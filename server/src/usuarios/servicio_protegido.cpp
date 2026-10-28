@@ -20,6 +20,10 @@ MensajeRPC error(const MensajeRPC& solicitud, const std::string& codigo,
     return MensajeRPC::respuestaA(solicitud, {{"mensaje", mensaje}}, codigo);
 }
 
+EstructuraRPC datosTarea(const Tarea& tarea, const std::string& propietario) {
+    return {{"id", tarea.id}, {"nombre", tarea.nombre}, {"propietario", propietario}};
+}
+
 } // namespace
 
 MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
@@ -39,6 +43,49 @@ MensajeRPC ServicioProtegido::atender(const MensajeRPC& solicitud) const {
     auto parametros = solicitud.parametros();
     parametros.erase("credenciales");
     const auto limpia = MensajeRPC::solicitud(solicitud.id(), solicitud.operacion(), parametros);
+
+    if (solicitud.operacion() == "tarea.subir" || solicitud.operacion() == "tarea.listar") {
+        try {
+            if (solicitud.operacion() == "tarea.subir") {
+                if (parametros.size() != 2 || !parametros.count("nombre") || !parametros.count("contenido"))
+                    return error(solicitud, "VALIDACION", "tarea.subir requiere solo nombre y contenido.");
+                const auto* nombre = std::get_if<std::string>(&parametros.at("nombre").dato());
+                const auto* contenido = std::get_if<std::string>(&parametros.at("contenido").dato());
+                if (!nombre || !contenido)
+                    return error(solicitud, "VALIDACION", "nombre y contenido deben ser texto.");
+                // El propietario es el usuario autenticado, no un parametro remoto.
+                const auto tarea = tareas_.guardar(solicitante, *nombre, *contenido);
+                auto datos = datosTarea(tarea, solicitante.nombre);
+                datos.emplace("mensaje", "Tarea almacenada. No se ejecutaron ordenes.");
+                return MensajeRPC::respuestaA(solicitud, datos);
+            }
+            if (!parametros.empty())
+                return error(solicitud, "VALIDACION", "tarea.listar no acepta parametros adicionales.");
+            const auto tareas = tareas_.listar(solicitante);
+            // Resolver nombres sin duplicarlos en los archivos ni exponer otras cuentas.
+            const auto propietarios = solicitante.rol == Rol::ADMINISTRADOR
+                ? usuarios_.listar() : std::vector<Usuario>{solicitante};
+            ValorRPC::Arreglo listado;
+            for (const auto& tarea : tareas) {
+                std::string propietario;
+                for (const auto& usuario : propietarios)
+                    if (usuario.id == tarea.propietario_id) { propietario = usuario.nombre; break; }
+                if (propietario.empty())
+                    throw ErrorTarea(TipoErrorTarea::ALMACENAMIENTO,
+                                     "Una tarea no tiene propietario en esta base; revise el respaldo conjunto.");
+                listado.emplace_back(datosTarea(tarea, propietario));
+            }
+            return MensajeRPC::respuestaA(solicitud, {{"tareas", listado}});
+        } catch (const ErrorTarea& e) {
+            const char* codigo = "ERROR_INTERNO";
+            if (e.tipo() == TipoErrorTarea::VALIDACION) codigo = "VALIDACION";
+            else if (e.tipo() == TipoErrorTarea::DUPLICADA) codigo = "ESTADO_INVALIDO";
+            else if (e.tipo() == TipoErrorTarea::ACCESO_DENEGADO) codigo = "PERMISO_DENEGADO";
+            return error(solicitud, codigo, e.what());
+        } catch (const ErrorUsuarios&) {
+            return error(solicitud, "ERROR_INTERNO", "No se pudieron consultar los propietarios de las tareas.");
+        }
+    }
 
     if (solicitud.operacion() == "usuario.actual") {
         if (!parametros.empty())

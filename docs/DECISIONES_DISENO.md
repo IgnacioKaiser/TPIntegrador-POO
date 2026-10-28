@@ -216,3 +216,41 @@ el sistema. Los datos subidos y sus temporales quedan excluidos de Git.
 
 Hito A no cambia autenticacion, esquema de usuarios, Robot, RPC ni cliente. Los
 resultados ejecutados y lo pendiente se registran en ESTADO_PROYECTO.md y cada historia.
+
+## D12. Hito B: tareas autenticadas y cliente de consola
+
+Fecha: 27/10/2026. Base: 08b0f4e (Hito A). Se reutiliza RepositorioTareas sin cambios
+en sus reglas ni en el esquema de usuarios. ServidorXmlRpc construye el repositorio
+con una carpeta configurable por --tareas-dir, data/trayectorias por defecto, y lo
+entrega por referencia a ServicioProtegido. Las pruebas pasan siempre una carpeta
+temporal explicita, tambien al intentar iniciar un segundo servidor.
+
+ServicioProtegido autentica antes de leer parametros de tareas y entrega al
+repositorio el Usuario resultante. Los campos que pretendan elegir propietario o
+ruta se rechazan. Resuelve los nombres de propietario con los usuarios existentes,
+sin guardarlos otra vez en archivos. No delega subir/listar a ServicioRobot: no hay
+conexion serie, movimiento ni ejecucion involucrada. Un servicio espia de prueba
+comprueba esa separacion usando el metodo virtual ya existente.
+
+Se agregan solo tarea.subir y tarea.listar; CONTRATO.md es su definicion unica.
+ErrorTarea se traduce a los codigos existentes: validacion, estado invalido para
+duplicados, permiso denegado o error interno. No se agregan codigos, sesiones ni
+base de tareas. Un listado sin resultados es OK con una lista vacia.
+
+Python reutiliza ServiciosPrueba y ClienteXmlRpc. pathlib representa la ruta local;
+se consulta el tamano antes de abrir y se lee como maximo 1 MiB + 1 byte por si el
+archivo crece. La decodificacion utf-8-sig admite y quita BOM. Son herramientas de
+la biblioteca estandar, sin paquetes nuevos. El servidor vuelve a validar todo:
+los controles locales solo ahorran lecturas y dan errores mas claros, no conceden
+permisos ni certifican G-Code. El nombre enviado no incluye la ruta local.
+
+La consola ofrece subir/tareas y opciones 17/18 para ambos perfiles. El listado se
+presenta en filas con ID, nombre y propietario. Un fallo de red informa resultado
+no confirmado, sin reintentar ni afirmar ejecucion fisica. Si se perdio la respuesta
+de una subida, consultar tareas permite comprobar si quedo guardada.
+
+La prueba de concurrencia usa clientes reales contra el servidor secuencial:
+de cuatro subidas al mismo nombre/propietario solo una puede publicar. No se
+amplia el alcance a varios procesos escritores ni se agregan bloqueos nuevos.
+Se conserva la necesidad de respaldar juntos usuarios y carpetas; no se implementan
+edicion, borrado, descarga ni ejecucion automatica.
