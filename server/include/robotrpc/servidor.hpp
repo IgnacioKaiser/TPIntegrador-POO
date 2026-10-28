@@ -15,16 +15,18 @@ class ServidorXmlRpc {
 public:
     explicit ServidorXmlRpc(unsigned short puerto,
                             const std::string& ruta = "data/db/usuarios.sqlite",
-                            const std::string& directorioTareas = "data/trayectorias");
+                            const std::string& directorioTareas = "data/trayectorias",
+                            CanalSerie* canal = nullptr);
     void ejecutar();
 private:
     unsigned short puerto_;
     RepositorioUsuarios usuarios_;
     Autenticador autenticador_;
     Robot robot_;
-    ServicioRobot servicio_;
     RepositorioTareas tareas_;
     RegistroActividadCsv registro_;
+    EjecutorTareas ejecutor_;
+    ServicioRobot servicio_;
     ServicioProtegido protegido_;
 };
 

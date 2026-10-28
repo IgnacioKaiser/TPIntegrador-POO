@@ -88,6 +88,7 @@ public:
 
     Robot();
     explicit Robot(CanalSerie& canal);
+    explicit Robot(CanalSerie* canal);
     ~Robot();
     Robot(const Robot&) = delete;
     Robot& operator=(const Robot&) = delete;

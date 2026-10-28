@@ -3,8 +3,10 @@
 Fecha de revision: 28/10/2026. Rama local: `us-17-ejecucion-tareas`, creada desde
 `origin/master` actualizado por fetch, base `d86c176`. El árbol estaba limpio;
 `master` local se conservó en `c72611a`. US-19 ya está integrada en esa base.
-US-17 se limita al Hito 1 local: lectura, formato ejecutable y una orden automática.
-No se hacen commits, push ni merges; no se modifica firmware ni se abre Arduino.
+El Hito 1 de US-17 quedó guardado en `fb0a6cb`, sin repetir pruebas al crear el
+commit. El Hito 2 está implementado y probado con controlador sustituido, sin
+commit para revisión. No se hace push ni merge, no se modifica firmware ni se
+abre Arduino en esta etapa.
 
 Antecedente de la última revisión de control manual (se conserva su evidencia):
 Fecha de revision: 28/10/2026. Rama de trabajo: `ControlManual`.
@@ -159,7 +161,7 @@ la ausencia de instantánea entre páginas y las limitaciones ante fallos de reg
 US-19 ya está integrada en `origin/master`, base de esta etapa; sus resultados
 anteriores se conservan como antecedentes.
 
-## US-17 Hito 1: base local, sin ejecución remota
+## US-17 Hito 1: antecedente guardado en fb0a6cb
 
 Rama `us-17-ejecucion-tareas`, base `d86c176`. Implementados leer por ID con
 propiedad, ProgramaTarea y órdenes tipadas, CanalSerie sustituible y
@@ -195,16 +197,61 @@ posición siguen pendientes de verificar con el firmware corregido del equipo.
 El código y las respuestas simuladas no certifican finalización física. Los
 antecedentes de reverificación de US-12 incorporados desde master se conservan;
 no se presentan como prueba física de US-17 ni de este entorno.
-US-17 no está completa ni integrada a master. Se detiene el trabajo al cerrar
-este Hito 1, sin commits, push ni merges.
+Estos fueron resultados del Hito 1 local, que todavía no completaba US-17.
+Se conservan sin presentarlos como pruebas nuevas ni físicas del Hito 2.
+
+## US-17 Hito 2: ejecución asíncrona local, sin commit
+
+EjecutorTareas mantiene una sola secuencia en un hilo, con reserva del robot y
+copias breves de progreso. ServicioProtegido autentica y autoriza tarea.ejecutar y
+tarea.estado. ServicioRobot rechaza operaciones incompatibles sin esperar la tarea
+y responde estado anterior identificado sin serie; informe.propio usa ese mismo
+camino. El cliente ofrece ejecutar/ejecucion y menú 22/23 para ambos perfiles.
+El ID del intento se muestra antes de enviar. No es un permiso ni idempotencia.
+
+Aceptación y resultado final se registran como eventos correlacionados en el CSV
+existente, sin credenciales ni G-Code. Los informes conservan el conteo de peticiones.
+Una deshabilitación posterior bloquea nuevos RPC y no interrumpe lo autorizado.
+El cierre espera el hilo antes de destruir Robot y registro; no es una parada física.
+Detalles, alternativas, límites y guía manual: [US-17](backlog/US-17.md) y D16.
+
+Pruebas ejecutadas en Windows nativo/PowerShell, MSYS2 UCRT64/g++ 15.2.0 y Python
+3.14.0, usando únicamente directorios, bases y CSV temporales:
+
+- Primero `mingw32-make -C server test-ejecutor test-us17-rpc`: 183 comprobaciones
+  C++ y 5 pruebas RPC reales con controlador sustituido, correctas.
+- Después, una sola regresión completa `mingw32-make -C server test`: correcta.
+  Incluye dominio, usuarios, autenticación, 59 comprobaciones de tareas, CSV,
+  132 del Hito 1, 183 del ejecutor, 53 pruebas del cliente, las 5 nuevas RPC con
+  sustituto y las 35 de integración anteriores contra el servidor C++ real.
+  Persisten cuatro omisiones de enlaces simbólicos por permisos/plataforma,
+  dos del almacenamiento anterior y dos del Hito 1. No hubo que debilitar tests.
+
+La reserva se comprobó manteniendo una orden pendiente mientras respondían las
+consultas y se rechazaban operaciones incompatibles, sin tráfico intercalado.
+El cierre se comprobó en C++ esperando la orden actual y omitiendo las restantes.
+El fixture RPC termina por limpieza de proceso; no se atribuye a esa terminación
+una prueba de cierre ordenado. Se comprobó también permiso por archivo/iniciador,
+admin sobre tarea ajena, estado anterior sin detalles privados, cuenta deshabilitada,
+fallos intermedios/finales, timeout sin reintentos, cliente y menú, registro y un
+movimiento con respuestas programadas. La prueba de cliente comprueba que el ID
+ya se mostró antes de una respuesta perdida.
+
+No se ejecutó Linux ni ninguna prueba física. El usuario informó Arduino UNO con
+firmware funcional que difiere ligeramente del versionado. No se conoce aún su
+identificación exacta, COM ni tarea/coordenadas físicas seguras. La guía exige
+completar esos datos y que la prueba la realice el usuario. M114 como barrera de
+finalización sigue pendiente; la simulación no certifica esa propiedad del firmware.
+US-17 no está verificada físicamente ni integrada a master. Hito 2 queda sin commit.
 
 ## Trabajo paralelo y pendientes generales
 
-No se presupone el trabajo local de otros integrantes. El Hito 1 de US-17 extiende Robot y extrae el canal serie; no modifica firmware. Pendientes: enseñanza de trayectorias y ejecución
-automática; alcance restante del informe global US-20; CLI administrativa completa;
-coordinación de acceso; entrega y diagramas. La US-23 completa sigue abierta.
-US-17 sigue pendiente de ejecución completa, atención concurrente, RPC y cliente
-del Hito 2. La integración a master no se realiza en esta tarea.
+No se presupone trabajo local de otros integrantes. Se conservan sus fuentes y
+los registros previos de US-12. Pendientes: enseñanza de trayectorias; alcance
+restante del informe global US-20; CLI administrativa completa; coordinación de
+acceso fuera de esta secuencia; entrega y diagramas. La US-23 completa sigue abierta.
+US-17 requiere revisión del Hito 2 y prueba manual física identificada antes de
+certificar hardware. No se publica ni integra esta rama en esta tarea.
 
 ## Entorno y comandos base
 Windows del usuario: PowerShell, g++ MSYS2 UCRT64 en C:/msys64/ucrt64/bin, mingw32-make y Python 3.14. Dependencias: SQLite y libsodium UCRT64.

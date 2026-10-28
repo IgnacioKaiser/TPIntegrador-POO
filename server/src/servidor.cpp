@@ -102,11 +102,12 @@ private:
 } // namespace
 
 ServidorXmlRpc::ServidorXmlRpc(unsigned short puerto, const std::string& ruta,
-                               const std::string& directorioTareas)
+                               const std::string& directorioTareas, CanalSerie* canal)
     : puerto_(puerto), usuarios_(ruta), autenticador_(usuarios_),
-      robot_(), servicio_(robot_), tareas_(directorioTareas),
+      robot_(canal), tareas_(directorioTareas),
        registro_(rutaActividad(ruta)),
-       protegido_(autenticador_, servicio_, usuarios_, tareas_, &registro_) {
+       ejecutor_(robot_, registro_), servicio_(robot_, &ejecutor_),
+       protegido_(autenticador_, servicio_, usuarios_, tareas_, &registro_, &ejecutor_) {
     int administradores = 0;
     for (const auto& usuario : usuarios_.listar())
         if (usuario.rol == Rol::ADMINISTRADOR && usuario.habilitado) ++administradores;
@@ -139,6 +140,7 @@ void ServidorXmlRpc::ejecutar() {
               << std::endl;
     while (!detener)
         servidor.work(0.1);
+    ejecutor_.cerrar(); // Fuera del manejador de senales y antes de cerrar Robot/CSV.
     registro_.registrarEvento("ServidorRPC", "cierre", "OK", "Servidor XML-RPC cerrado");
     servidor.shutdown();
     std::cout << "Servidor cerrado." << std::endl;

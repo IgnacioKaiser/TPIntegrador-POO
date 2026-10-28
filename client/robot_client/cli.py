@@ -12,6 +12,12 @@ class CliCliente:
     def __init__(self, servicios: ServiciosPrueba):
         self.servicios = servicios
 
+    def ejecutar_tarea(self, tarea_id):
+        solicitud = self.servicios.preparar_ejecucion(tarea_id)
+        print(f"ID de ejecucion: {solicitud.id}", flush=True)
+        print(f"Si pierde la respuesta, consultar: ejecucion {solicitud.id}", flush=True)
+        return self.servicios.ejecutar_tarea(solicitud)
+
     @staticmethod
     def mostrar_datos(datos, sangria=0):
         """Recorre estructuras anidadas sin inventar valores faltantes."""
@@ -28,6 +34,17 @@ class CliCliente:
     @staticmethod
     def mostrar(respuesta):
         datos = respuesta.resultado
+        if respuesta.codigo == "OK" and respuesta.operacion in ("tarea.ejecutar", "tarea.estado"):
+            print(f"[OK] Ejecucion {datos['ejecucion_id']}: {datos['estado']} "
+                  f"[{datos['codigo_ejecucion']}]")
+            print(f"Tarea: {datos['tarea_id']} | Ordenes confirmadas: {datos['confirmadas']}/{datos['total']}")
+            print(f"Orden: {datos['orden_actual']} | Linea: {datos['linea_actual']} | "
+                  f"Resultado de orden: {datos['resultado_orden']}")
+            print(datos['mensaje'])
+            if not datos['registro_completo']:
+                print("Advertencia: el registro de ejecucion esta incompleto.")
+            print("Confirmaciones del protocolo; M114 como barrera sigue pendiente de prueba fisica.")
+            return
         if respuesta.codigo == "OK" and respuesta.operacion == "informe.propio":
             print(f"[OK] Actividad propia de {datos['usuario']} (UTC)")
             referencia = {"inicio": "inicio del servidor (sin conexion posterior)",
@@ -130,6 +147,8 @@ class CliCliente:
                   "\n17. Subir archivo de tarea (sin ejecutar)"
                   "\n18. Listar tareas disponibles"
                   "\n21. Consultar mi actividad"
+                  "\n22. Ejecutar tarea almacenada (modo automatico)"
+                  "\n23. Consultar ejecucion"
                   "\n0. Salir")
             opcion = input("Opcion: ").strip()
             if opcion == "0":
@@ -196,6 +215,10 @@ class CliCliente:
                     offset = int(input("Offset (Enter=0): ").strip() or "0")
                     limite = int(input("Limite (Enter=50, maximo 100): ").strip() or "50")
                     self.mostrar(self.servicios.actividad_propia(offset, limite))
+                elif opcion == "22":
+                    self.mostrar(self.ejecutar_tarea(input("ID de tarea (ver opcion 18): ").strip()))
+                elif opcion == "23":
+                    self.mostrar(self.servicios.consultar_ejecucion(input("ID de ejecucion: ").strip()))
                 elif opcion in ("19", "20"):
                     usuario = input("Usuario (Enter=todos): ").strip()
                     desde = input("Desde AAAA-MM-DD (Enter=sin limite): ").strip()
@@ -258,6 +281,10 @@ def main(argv=None):
     subir = comandos.add_parser("subir", help="Almacenar un archivo G-Code sin ejecutarlo")
     subir.add_argument("ruta", help="Ruta del archivo local UTF-8")
     comandos.add_parser("tareas", help="Listar tareas segun propietario y rol")
+    ejecutar = comandos.add_parser("ejecutar", help="Iniciar tarea almacenada en automatico")
+    ejecutar.add_argument("tarea_id")
+    ejecucion = comandos.add_parser("ejecucion", help="Consultar intento de ejecucion sin repetirlo")
+    ejecucion.add_argument("ejecucion_id")
     actividad = comandos.add_parser("actividad", help="Consultar mi actividad desde la ultima conexion")
     actividad.add_argument("--offset", type=int, default=0)
     actividad.add_argument("--limite", type=int, default=50)
@@ -306,6 +333,10 @@ def main(argv=None):
             respuesta = servicios.subir_archivo(args.ruta)
         elif args.comando == "tareas":
             respuesta = servicios.listar_tareas()
+        elif args.comando == "ejecutar":
+            respuesta = cli.ejecutar_tarea(args.tarea_id)
+        elif args.comando == "ejecucion":
+            respuesta = servicios.consultar_ejecucion(args.ejecucion_id)
         elif args.comando == "actividad":
             respuesta = servicios.actividad_propia(args.offset, args.limite)
         elif args.comando == "informe-usuarios":
@@ -322,6 +353,8 @@ def main(argv=None):
         else:
             return cli.ejecutar()
         cli.mostrar(respuesta)
+        if respuesta.codigo == "OK" and respuesta.operacion == "tarea.estado" and respuesta.resultado['estado'] == "fallida":
+            return 1
         return 0 if respuesta.codigo == "OK" else 1
     except (ErrorComunicacion, MensajeInvalido, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)

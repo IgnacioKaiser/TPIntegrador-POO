@@ -11,9 +11,9 @@ public:
     ServicioProtegido(const Autenticador& autenticador,
                       const ServicioRobot& servicio,
                       RepositorioUsuarios& usuarios, RepositorioTareas& tareas,
-                      RegistroActividadCsv* registro = nullptr)
+                      RegistroActividadCsv* registro = nullptr, EjecutorTareas* ejecutor = nullptr)
         : autenticador_(autenticador), servicio_(servicio), usuarios_(usuarios),
-          tareas_(tareas), registro_(registro) {}
+          tareas_(tareas), registro_(registro), ejecutor_(ejecutor) {}
 
     MensajeRPC atender(const MensajeRPC& solicitud) const;
     MensajeRPC atenderInterno(const MensajeRPC& solicitud,
@@ -25,5 +25,6 @@ private:
     RepositorioUsuarios& usuarios_;
     RepositorioTareas& tareas_;
     RegistroActividadCsv* registro_;
+    EjecutorTareas* ejecutor_;
 };
 }

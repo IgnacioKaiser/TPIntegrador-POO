@@ -170,6 +170,8 @@ de motores, `tarea.listar` y `ayuda` no aceptan parámetros adicionales.
 | `usuario.deshabilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Deshabilita un operador; solo administrador. |
 | `tarea.subir` | `nombre: string`, `contenido: string` | `id: string`, `nombre: string`, `propietario: string`, `mensaje: string` | Almacena una tarea del usuario autenticado; no ejecuta órdenes. |
 | `tarea.listar` | Ninguno | `tareas: array` de `struct` | Operador: tareas propias. Administrador: todas. |
+| `tarea.ejecutar` | `tarea_id: string` | Aceptación y referencia de ejecución (ver abajo) | Automático, conectado y libre; operador solo archivos propios, administrador cualquiera. |
+| `tarea.estado` | `ejecucion_id: string` | Progreso y resultado (ver abajo) | Iniciador habilitado o administrador; no accede al puerto serie. |
 | `log.consultar` | Filtros y paginación opcionales (ver abajo) | `registros: array`, `total: int`, `offset: int`, `mostrados: int` | Consulta del CSV; solo administrador. |
 | `informe.usuarios` | Filtros opcionales (ver abajo) | `usuarios: array`, `total_peticiones: int`, `total_ok: int`, `total_errores: int` | Totales de peticiones por identidad autenticada; solo administrador. |
 | `informe.propio` | `offset: int`, `limite: int`, opcionales | Estado, referencia del periodo, inicio, detalle y totales (ver abajo) | Solo la actividad de la identidad autenticada; ambos roles. |
@@ -286,6 +288,83 @@ El directorio es configuración local: `--tareas-dir carpeta`, predeterminado
 a ServicioRobot. No requieren conexión ni un modo del robot. Un proceso escritor
 atiende las solicitudes secuencialmente; no se agregan reintentos automáticos.
 
+### Ejecución de tareas (US-17)
+
+Ambas operaciones conservan el sobre de seis campos y las credenciales por cada
+solicitud. No aceptan propietario, usuario, rol, rutas ni parámetros adicionales.
+`tarea_id` es el ID canónico entregado por `tarea.listar`, por ejemplo
+`2:pieza.nc`. Identifica el recurso; el servidor verifica quién puede leerlo.
+El archivo completo se lee y se valida antes de iniciar, sin interpretar su
+almacenamiento como certificación de ejecutabilidad. Ver [US-17](backlog/US-17.md)
+para el subconjunto admitido, unidades y validación dinámica de movimientos.
+
+El `ejecucion_id` es el campo `id` de la solicitud inicial `tarea.ejecutar`.
+El cliente lo genera y muestra antes del envío. `tarea.estado` lo recibe como un
+string con las mismas reglas de ID del sobre (1–64 caracteres ASCII permitidos).
+Su conocimiento no otorga acceso ni garantiza idempotencia. No se reintenta un
+inicio perdido; se consulta ese ID. Se conserva solo la ejecución actual o última
+del proceso: otra ejecución reemplaza la anterior y el reinicio pierde ese estado
+en memoria, conservando el CSV. No hay historial de trabajos ni deduplicación
+duradera; repetir el ID de la última ejecución se rechaza.
+
+El resultado `OK` de ambas operaciones contiene exactamente:
+
+| Campo | Tipo XML-RPC | Significado |
+| --- | --- | --- |
+| `ejecucion_id`, `tarea_id` | `string` | Correlación y archivo autorizado. |
+| `estado` | `string` | `aceptada`, `ejecutandose`, `finalizada` o `fallida`. |
+| `total`, `confirmadas` | `int` / `i4` | Órdenes del archivo y longitud del prefijo confirmado. |
+| `orden_actual`, `linea_actual` | `int` / `i4` | Orden desde 1 y línea original; 0 antes de comenzar. |
+| `resultado_orden` | `string` | `no_enviada`, `pendiente`, `confirmada`, `error_controlador` o `desconocido`. |
+| `codigo_ejecucion` | `string` | `OK` mientras no existe fallo; `ESTADO_INVALIDO` o `ERROR_INTERNO` si falla. |
+| `mensaje` | `string` | Explicación segura, sin contenido G-Code ni rutas. |
+| `registro_completo` | `boolean` | False si no se pudo completar el registro del resultado. |
+
+`tarea.ejecutar` devuelve `aceptada`, con cero confirmadas: no espera al archivo
+completo. `tarea.estado` responde con una copia breve y coherente del progreso.
+Su código exterior `OK` confirma la consulta incluso si el trabajo está `fallida`;
+se debe examinar `estado` y `codigo_ejecucion`. Los contadores usan int32 con la
+saturación existente. No hay porcentaje físico ni estimación de finalización.
+
+La primera orden con error detiene el resto sin reintentos. `confirmadas` identifica
+el prefijo anterior a la orden fallida; `orden_actual` y `linea_actual` identifican
+la que falló o no llegó a enviarse. `error_controlador` puede tener efectos
+parciales. `desconocido` significa que se intentó enviar sin poder verificar el
+resultado, incluido un timeout posterior a OK. `finalizada` significa confirmada
+según el protocolo implementado: **M114 como barrera sigue pendiente de verificar
+con el firmware corregido; no es confirmación física**.
+
+Mientras exista una tarea activa, conectar, desconectar, motores, control manual
+y selección de modos responden inmediatamente `ESTADO_INVALIDO`, después de los
+controles de autenticación y rol. No se encolan. `estado` responde sin serie con
+`datos_anteriores: true`, mensaje explícito y conexión/modos conocidos al aceptar
+la tarea; posición y actividad del controlador se marcan no disponibles. No devuelve
+IDs privados de tarea o ejecución. `informe.propio` conserva el mismo indicador
+dentro de `estado`. En consultas normales sin tarea activa se conserva la respuesta
+existente, sin ese indicador de datos anteriores.
+
+Ping, eco, ayuda, tareas, usuarios y consultas CSV siguen disponibles con sus
+permisos. Deshabilitar una cuenta bloquea sus siguientes RPC; no interrumpe una
+ejecución ya autorizada, aunque pertenezca a esa cuenta. El hilo no guarda claves
+ni vuelve a autenticar como si mantuviera una sesión. Solo el iniciador habilitado
+o un administrador pueden consultar el progreso, incluso si otro usuario es el
+propietario del archivo ejecutado por el administrador.
+
+Errores de aplicación: `VALIDACION` por tipos/campos, IDs o programa inválidos;
+`RECURSO_NO_ENCONTRADO` por tarea o ejecución no disponible; `PERMISO_DENEGADO`
+por propiedad o acceso; `ESTADO_INVALIDO` por robot ocupado, desconectado, modo
+incorrecto o proceso cerrando; `ERROR_INTERNO` por lectura, registro de aceptación
+o creación del hilo fallidos. Se conservan los errores de autenticación y Fault
+del sobre existentes. Los errores llevan `resultado.mensaje`.
+
+La aceptación y el resultado final se agregan como `EVENTO` al CSV existente,
+con `id_solicitud` igual al ID de ejecución y `usuario` autenticado. Estos eventos
+de `EjecutorTareas` son la excepción a los campos vacíos de eventos generales;
+no se cuentan como nuevas peticiones en los informes. La petición inicial `OK`
+significa aceptación, no el resultado posterior. Un fallo de registro final se
+advierte sin repetir órdenes ni convertir una ejecución confirmada en un fallo
+de movimiento.
+
 ### Registro e informes: consultas administrativas
 
 `log.consultar` e `informe.usuarios` conservan el sobre de seis campos y requieren
@@ -316,8 +395,9 @@ nueve campos `string`: `fecha_hora`, `tipo`, `id_solicitud`, `usuario`,
 `nodo_cliente`, `modulo`, `operacion`, `codigo` y `detalle`. `fecha_hora` usa UTC
 con formato `AAAA-MM-DDTHH:MM:SSZ`. Para `PETICION`, `usuario` queda vacío cuando
 no se logró autenticar una cuenta habilitada; `nodo_cliente` es el valor fijo
-`127.0.0.1` de la escucha local actual. Los eventos no tienen ID de solicitud,
-usuario ni nodo: esos campos son strings vacíos. El detalle es genérico y no
+`127.0.0.1` de la escucha local actual. Los eventos generales no tienen ID de solicitud,
+usuario ni nodo: esos campos son strings vacíos. Los de ejecución de US-17
+conservan correlación y usuario verificado, como se indicó en su sección. El detalle es genérico y no
 contiene parámetros, credenciales, hashes ni contenido de tareas.
 
 Se conserva el orden de las filas del archivo, desde las más antiguas agregadas;
@@ -454,10 +534,8 @@ debe exponer el servicio a una red no confiable.
 
 ## 13. Compatibilidad y mantenimiento
 
-US-17 Hito 1 solo agrega APIs locales C++ de lectura y ejecución de una orden.
-No publica `tarea.ejecutar` ni `tarea.estado`: esas operaciones siguen pendientes
-del Hito 2. El sobre de seis campos, las credenciales y las operaciones de este
-contrato se conservan. Ver [US-17](backlog/US-17.md) para el alcance local y la
+US-17 agrega `tarea.ejecutar` y `tarea.estado` sin cambiar el sobre ni las
+credenciales. Ver [US-17](backlog/US-17.md) para concurrencia, cierre y la
 verificación pendiente de M114 como barrera.
 
 El cliente y el servidor deben respetar los mismos nombres, tipos y significados. Si se modifica la estructura general o la definición de una operación, se actualizarán este documento y las implementaciones y pruebas correspondientes de ambos lados.

@@ -126,6 +126,19 @@ class ServiciosPrueba:
     def listar_tareas(self) -> MensajeRPC:
         return self._enviar("tarea.listar")
 
+    def preparar_ejecucion(self, tarea_id: str) -> MensajeRPC:
+        # El llamador puede guardar/mostrar el ID antes de que exista trafico de red.
+        return MensajeRPC.solicitud("tarea.ejecutar", {
+            "tarea_id": tarea_id, "credenciales": dict(self._credenciales)})
+
+    def ejecutar_tarea(self, solicitud: MensajeRPC) -> MensajeRPC:
+        if not isinstance(solicitud, MensajeRPC) or solicitud.operacion != "tarea.ejecutar":
+            raise ValueError("Se requiere una solicitud de ejecucion preparada.")
+        return self.cliente.enviar(solicitud)
+
+    def consultar_ejecucion(self, ejecucion_id: str) -> MensajeRPC:
+        return self._enviar("tarea.estado", {"ejecucion_id": ejecucion_id})
+
     def actividad_propia(self, offset=0, limite=50) -> MensajeRPC:
         return self._enviar("informe.propio", {"offset": offset, "limite": limite})
 

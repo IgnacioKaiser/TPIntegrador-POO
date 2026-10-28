@@ -357,3 +357,34 @@ en [US-17](backlog/US-17.md), sin duplicarlos aquí.
 
 Este hito no agrega hilo, operaciones RPC, cliente ni eventos de ejecución. Las
 decisiones de reserva y atención durante una secuencia corresponden al Hito 2.
+
+## D16. Una ejecución asíncrona y una reserva del robot (US-17 Hito 2)
+
+Hito 1 guardado en `fb0a6cb`. Hito 2 continúa en `us-17-ejecucion-tareas`, sin
+commit ni integración. Se elige un único std::thread para la secuencia y se
+conserva la atención XML-RPC secuencial. Ejecutar dentro de RPC bloquearía todas
+las consultas; una máquina de estados serie exigiría cambiar más código. No hay
+cola, framework de trabajos ni sesiones nuevas.
+
+EjecutorTareas posee el hilo, reserva Robot y publica copias de progreso bajo un
+mutex breve. ServicioRobot intenta obtener acceso sin esperar; si existe reserva,
+rechaza operaciones incompatibles y devuelve un estado anterior identificado para
+las consultas. Así queda protegido también el estado interno de informe.propio.
+La reserva dura toda la secuencia, no una orden por vez. El hilo recibe programa
+e identificadores copiados; no usa SQLite, archivos de tareas ni credenciales.
+
+La habilitación se comprueba por RPC. Una tarea aceptada continúa si luego se
+deshabilita la cuenta; interrumpirla añadiría una parada sin garantía física que
+no exige la historia. No se agrega pausa, reanudación ni cancelación. Al cerrar el
+proceso se dejan de enviar órdenes entre pasos y se espera la actual antes de
+destruir Robot y CSV. Esto no representa una parada de emergencia.
+
+La referencia de ejecución es el ID preparado antes del envío inicial; permite
+consultar una respuesta perdida, pero no concede permisos ni garantiza
+idempotencia. Solo se conserva el trabajo actual o último en memoria. Aceptación
+y finalización se registran como eventos correlacionados en el CSV existente;
+los informes siguen contando peticiones, sin confundir aceptación con ejecución.
+
+std::thread y std::mutex pertenecen a C++17; `-pthread` selecciona el soporte de
+hilos del compilador en las plataformas previstas. No se agrega una biblioteca
+de aplicación externa. Detalle, alternativas, pruebas y límites: [US-17](backlog/US-17.md).

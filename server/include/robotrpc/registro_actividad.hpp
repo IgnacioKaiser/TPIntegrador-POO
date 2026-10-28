@@ -44,6 +44,9 @@ public:
                           const std::string& codigo);
     void registrarEvento(const std::string& modulo, const std::string& operacion,
                          const std::string& codigo, const std::string& detalle);
+    void registrarEjecucion(const std::string& id, const std::string& usuarioVerificado,
+                           const std::string& operacion, const std::string& codigo,
+                           const std::string& detalle);
 
     PaginaActividad consultar(const FiltroActividad& filtro) const;
     std::vector<ResumenUsuario> informeUsuarios(const FiltroActividad& filtro) const;

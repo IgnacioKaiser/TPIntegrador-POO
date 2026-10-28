@@ -197,18 +197,40 @@ En Linux usar `python3`. Cada pedido verifica nuevamente usuario, clave y
 habilitación. `log` e `informe-usuarios` siguen siendo administrativos.
 Ver [US-19](docs/backlog/US-19.md) para probar con dos usuarios y datos temporales.
 
-## US-17: base local para ejecutar tareas (Hito 1)
+## US-17: ejecutar tareas almacenadas
 
-Se agrega lectura autorizada por ID, interpretación del formato ejecutable y una
-API C++ para una orden automática. Todavía no hay ejecución de tareas desde RPC
-ni comandos nuevos del cliente. Guardar un archivo no certifica que sea ejecutable.
+Con el servidor iniciado, listar las tareas autorizadas, seleccionar su ID e iniciar
+una sola ejecución en automático y con el robot conectado:
 
 ```powershell
-mingw32-make -C server test-ejecucion
+python client/main.py tareas
+python client/main.py ejecutar ID_TAREA_DEL_LISTADO
+python client/main.py ejecucion ID_MOSTRADO_ANTES_DEL_ENVIO
 ```
 
-Esta prueba usa archivos temporales y un canal serie sustituido; no abre Arduino.
-En Linux el comando previsto es `make -C server test-ejecucion`, pendiente de
-ejecutar allí. La barrera M114 requiere verificación posterior con el firmware
-corregido; no se afirma finalización física. Ver [US-17](docs/backlog/US-17.md)
-para formato, clases, errores y pendientes del Hito 2.
+El menú ofrece 22 para iniciar y 23 para consultar, para ambos perfiles. Operador
+solo ejecuta archivos propios; administrador puede elegir cualquiera. Guardar no
+certifica que el archivo sea ejecutable: se valida el subconjunto del programa
+antes de aceptar y las condiciones de movimiento antes de cada orden.
+
+El ID de ejecución se muestra antes del envío. Si se pierde la respuesta, consultar
+ese ID sin repetir el inicio. Aceptada no significa finalizada; se muestran progreso,
+prefijo confirmado y errores o resultados desconocidos. Solo queda disponible la
+última ejecución del proceso; el CSV conserva aceptación y resultado final.
+
+Mientras corre la tarea se rechazan cambios de modo, control manual, motores y
+conexión. Estado e informe propio muestran datos anteriores marcados, sin tocar el
+puerto. Las consultas de progreso no esperan a que termine la secuencia. No hay
+pausa, cancelación, reanudación ni recuperación automática; no es parada de emergencia.
+
+Pruebas sin hardware:
+
+```powershell
+mingw32-make -C server test-ejecucion test-ejecutor test-us17-rpc
+```
+
+En Linux usar `make` (ejecución allí pendiente). Los nuevos tests usan controladores
+sustituidos y datos temporales. M114 como barrera sigue pendiente de verificar en
+el Arduino UNO con el firmware corregido; no se afirma finalización física.
+Ver [US-17](docs/backlog/US-17.md) para arquitectura, formato, límites y la guía
+manual posterior, que requiere identificar COM, firmware y una tarea segura.

@@ -186,6 +186,11 @@ void RegistroActividadCsv::registrarEvento(
     anexar({"", "EVENTO", "", "", "", modulo, operacion, codigo, detalle});
 }
 
+void RegistroActividadCsv::registrarEjecucion(const std::string& id, const std::string& usuario,
+    const std::string& operacion, const std::string& codigo, const std::string& detalle) {
+    anexar({"", "EVENTO", id, usuario, "", "EjecutorTareas", operacion, codigo, detalle});
+}
+
 void RegistroActividadCsv::validarFiltro(const FiltroActividad& f) {
     if (!fechaValida(f.desde) || !fechaValida(f.hasta))
         throw std::invalid_argument("Fechas invalidas. Usar AAAA-MM-DD (UTC).");

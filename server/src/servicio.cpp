@@ -176,6 +176,28 @@ MensajeRPC ServicioRobot::atender(const MensajeRPC& solicitud) const {
     const std::string& operacion = solicitud.operacion();
 
     try {
+        std::unique_lock<std::mutex> acceso;
+        if (ejecutor_ && operacion != "ping" && operacion != "eco" && operacion != "ayuda") {
+            auto foto = ejecutor_->fotoSiActiva();
+            if (!foto) {
+                acceso = ejecutor_->intentarAccesoRobot();
+                if (!acceso.owns_lock())
+                    return respuestaError(solicitud, "ESTADO_INVALIDO", "El robot esta reservado.");
+                foto = ejecutor_->fotoSiActiva(); // Cierra la carrera con un inicio concurrente.
+            }
+            if (foto) {
+                if (operacion != "estado")
+                    return respuestaError(solicitud, "ESTADO_INVALIDO", "Hay una tarea en ejecucion; operacion incompatible.");
+                validarSinParametros(parametros);
+                return MensajeRPC::respuestaA(solicitud,
+                    {{"conectado", foto->conectado}, {"modo_trabajo", nombreModoTrabajo(foto->trabajo)},
+                     {"modo_coordenadas", nombreModoCoordenadas(foto->coordenadas)},
+                     {"posicion", datoNoDisponible("Posicion actual no consultada durante la tarea.")},
+                     {"actividad", estadoRobotDesconocido(foto->coordenadas)},
+                     {"datos_anteriores", true},
+                     {"mensaje", "Datos locales anteriores al inicio; el puerto esta reservado por una tarea."}});
+            }
+        }
         if (operacion == "ping") {
             validarSinParametros(parametros);
             return MensajeRPC::respuestaA(

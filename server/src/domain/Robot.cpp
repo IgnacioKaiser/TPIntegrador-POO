@@ -15,6 +15,10 @@ Robot::Robot(CanalSerie& canal)
     : canal_(canal), modoTrabajo_(ModoTrabajo::MANUAL),
       modoCoordenadas_(ModoCoordenadas::ABSOLUTO) {}
 
+Robot::Robot(CanalSerie* canal)
+    : canal_(canal ? *canal : puerto_), modoTrabajo_(ModoTrabajo::MANUAL),
+      modoCoordenadas_(ModoCoordenadas::ABSOLUTO) {}
+
 Robot::~Robot() { desconectar(); }
 bool Robot::conectar(const std::string& puerto) { return canal_.conectar(puerto); }
 void Robot::desconectar() { canal_.desconectar(); }

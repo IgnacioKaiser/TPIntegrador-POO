@@ -84,6 +84,45 @@ MensajeRPC ServicioProtegido::atenderInterno(
     auto parametros = solicitud.parametros();
     parametros.erase("credenciales");
     const auto limpia = MensajeRPC::solicitud(solicitud.id(), solicitud.operacion(), parametros);
+    if (solicitud.operacion() == "tarea.ejecutar" || solicitud.operacion() == "tarea.estado") {
+        const bool iniciar = solicitud.operacion() == "tarea.ejecutar";
+        const std::string campo = iniciar ? "tarea_id" : "ejecucion_id";
+        if (parametros.size() != 1 || !parametros.count(campo) ||
+            !std::holds_alternative<std::string>(parametros.at(campo).dato()))
+            return error(solicitud, "VALIDACION", "Se requiere solamente " + campo + " de tipo string.");
+        if (!ejecutor_) return error(solicitud, "ERROR_INTERNO", "Ejecutor no configurado.");
+        const auto id = parametros.at(campo).obtener<std::string>();
+        if (!iniciar) {
+            try { MensajeRPC::solicitud(id, "ping"); }
+            catch (const MensajeInvalido&) { return error(solicitud, "VALIDACION", "Identificador de ejecucion invalido."); }
+        }
+        try {
+            ProgresoTarea progreso;
+            if (iniciar) {
+                const auto contenido = tareas_.leer(solicitante, id);
+                ProgramaTarea programa(contenido.contenido);
+                progreso = ejecutor_->iniciar(solicitante, contenido.tarea, std::move(programa), solicitud.id());
+            } else progreso = ejecutor_->consultar(solicitante, id);
+            return MensajeRPC::respuestaA(solicitud,
+                {{"ejecucion_id", progreso.ejecucion_id}, {"tarea_id", progreso.tarea_id},
+                 {"estado", progreso.estado}, {"total", enteroRpc(progreso.total)},
+                 {"confirmadas", enteroRpc(progreso.confirmadas)}, {"orden_actual", enteroRpc(progreso.orden_actual)},
+                 {"linea_actual", enteroRpc(progreso.linea_actual)}, {"resultado_orden", progreso.resultado_orden},
+                 {"codigo_ejecucion", progreso.codigo}, {"mensaje", progreso.mensaje},
+                 {"registro_completo", progreso.registro_completo}});
+        } catch (const ErrorEjecucion& e) {
+            return error(solicitud, e.codigo(), e.what());
+        } catch (const ErrorTarea& e) {
+            const char* codigo = e.tipo() == TipoErrorTarea::VALIDACION ? "VALIDACION"
+                : e.tipo() == TipoErrorTarea::ACCESO_DENEGADO ? "PERMISO_DENEGADO"
+                : e.tipo() == TipoErrorTarea::NO_ENCONTRADA ? "RECURSO_NO_ENCONTRADO" : "ERROR_INTERNO";
+            return error(solicitud, codigo, e.what());
+        } catch (const std::invalid_argument& e) {
+            return error(solicitud, "VALIDACION", e.what());
+        } catch (const std::exception&) {
+            return error(solicitud, "ERROR_INTERNO", "No se pudo preparar la ejecucion.");
+        }
+    }
     if (solicitud.operacion() == "informe.propio") {
         std::size_t offset = 0, limite = 50;
         for (const auto& campo : parametros) {
