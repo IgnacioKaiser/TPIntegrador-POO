@@ -3,12 +3,23 @@
 #include <stdexcept>
 #include <string>
 
+// Solo en pruebas: detecta si las tareas llegan al servicio de control del robot.
+class ServicioEspia : public robotrpc::ServicioRobot {
+public:
+    explicit ServicioEspia(Robot& robot) : ServicioRobot(robot) {}
+    mutable int llamadas = 0;
+    robotrpc::MensajeRPC atender(const robotrpc::MensajeRPC& solicitud) const override {
+        ++llamadas;
+        return ServicioRobot::atender(solicitud);
+    }
+};
+
 static void exigir(bool condicion, const char* mensaje) {
     if (!condicion) throw std::runtime_error(mensaje);
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) return 1;
+    if (argc != 3) return 1;
     try {
         using namespace robotrpc;
         RepositorioUsuarios repo(argv[1]);
@@ -17,8 +28,9 @@ int main(int argc, char* argv[]) {
         repo.agregarOperador("pedro", "ClavePedro1");
         Autenticador autenticador(repo);
         Robot robot;
-        ServicioRobot servicio(robot);
-        ServicioProtegido protegido(autenticador, servicio, repo);
+        ServicioEspia servicio(robot);
+        RepositorioTareas tareas(argv[2]);
+        ServicioProtegido protegido(autenticador, servicio, repo, tareas);
 
         auto solicitud = [](const std::string& actor, const std::string& clave,
                             const std::string& operacion,
@@ -65,6 +77,23 @@ int main(int argc, char* argv[]) {
         controlar(solicitud("admin", "ClaveAdmin1", "usuario.actual",
                              {{"rol", "ADMINISTRADOR"}}), "VALIDACION");
 
+        const int llamadasAntes = servicio.llamadas;
+        controlar(solicitud("operador", "ClaveOperador1", "tarea.subir",
+                             {{"nombre", "pieza.nc"}, {"contenido", "G28\nM3\n"}}), "OK");
+        controlar(solicitud("operador", "ClaveOperador1", "tarea.subir",
+                             {{"nombre", "PIEZA.NC"}, {"contenido", "M18"}}), "ESTADO_INVALIDO");
+        controlar(solicitud("admin", "ClaveAdmin1", "tarea.listar"), "OK");
+        controlar(solicitud("operador", "Incorrecta", "tarea.subir",
+                             {{"nombre", "rechazada.nc"}, {"contenido", "G28"}}), "NO_AUTENTICADO");
+        controlar(solicitud("operador", "ClaveOperador1", "tarea.subir",
+                             {{"nombre", "otra.nc"}, {"contenido", "G28"},
+                              {"propietario", "admin"}}), "VALIDACION");
+        controlar(solicitud("operador", "ClaveOperador1", "tarea.listar",
+                             {{"propietario", "admin"}}), "VALIDACION");
+        exigir(servicio.llamadas == llamadasAntes, "Subir o listar invoco el servicio del robot.");
+        exigir(tareas.listar(*repo.buscar("operador")).size() == 1,
+               "Una solicitud rechazada escribio una tarea.");
+
         controlar(solicitud("operador", "ClaveOperador1", "conectar",
                              {{"puerto", "puerto-inexistente"}}),
                   "PERMISO_DENEGADO");
@@ -92,6 +121,9 @@ int main(int argc, char* argv[]) {
         controlar(solicitud("admin", "ClaveAdmin1", "usuario.deshabilitar",
                              {{"usuario", "pedro"}}), "OK");
         exigir(!estado("pedro"), "No se deshabilito el operador.");
+        controlar(solicitud("pedro", "ClavePedro1", "tarea.listar"), "PERMISO_DENEGADO");
+        controlar(solicitud("pedro", "ClavePedro1", "tarea.subir",
+                             {{"nombre", "rechazada.nc"}, {"contenido", "G28"}}), "PERMISO_DENEGADO");
         controlar(solicitud("pedro", "ClavePedro1", "usuario.actual"), "PERMISO_DENEGADO");
         controlar(solicitud("pedro", "ClavePedro1", "ping"), "PERMISO_DENEGADO");
         controlar(solicitud("pedro", "ClavePedro1", "eco", {{"texto", "hola"}}),

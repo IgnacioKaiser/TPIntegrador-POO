@@ -159,7 +159,7 @@ En caso de error de aplicación, `resultado` puede incluir un campo `mensaje` de
 Todas las operaciones requieren `parametros.credenciales` y rechazan parámetros
 desconocidos. En la tabla se indican solo los parámetros adicionales a las
 credenciales. `ping`, `usuario.actual`, `desconectar`, `estado`, los comandos
-de motores y `ayuda` no aceptan parámetros adicionales.
+de motores, `tarea.listar` y `ayuda` no aceptan parámetros adicionales.
 
 | Operación | Parámetros | Resultado en `OK` | Comportamiento |
 | --- | --- | --- | --- |
@@ -168,6 +168,8 @@ de motores y `ayuda` no aceptan parámetros adicionales.
 | `usuario.actual` | Ninguno | `usuario: string`, `rol: string` | Devuelve únicamente la identidad autenticada de quien realiza el pedido. |
 | `usuario.habilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Habilita un operador; solo administrador. |
 | `usuario.deshabilitar` | `usuario: string` | `usuario: string`, `habilitado: boolean`, `mensaje: string` | Deshabilita un operador; solo administrador. |
+| `tarea.subir` | `nombre: string`, `contenido: string` | `id: string`, `nombre: string`, `propietario: string`, `mensaje: string` | Almacena una tarea del usuario autenticado; no ejecuta órdenes. |
+| `tarea.listar` | Ninguno | `tareas: array` de `struct` | Operador: tareas propias. Administrador: todas. |
 | `conectar` | `puerto: string` opcional | `mensaje: string` | Abre el puerto a 115200 baudios, 8N1. Por defecto usa `/dev/ttyACM0` en Linux y `COM3` en Windows. |
 | `desconectar` | Ninguno | `mensaje: string` | Cierra la conexión si está abierta; también es válida si ya estaba desconectado. |
 | `estado` | Ninguno | `conectado: boolean`, `posicion: struct`, `actividad: struct`, `modo_trabajo: string`, `modo_coordenadas: string` | Devuelve el estado de conexión y los modos seleccionados. Si está conectado, consulta `M114`; cada dato no informado se marca `disponible: false` con un `mensaje` explicativo. |
@@ -241,6 +243,47 @@ muestra todas sus opciones actuales; con `OPERADOR` omite conectar, desconectar
 y administración de operadores. Si hay un error o falta un rol reconocido no abre
 el menú. Los comandos directos siguen sujetos a los controles del servidor.
 Las operaciones de usuarios se detallan en `docs/backlog/US-05.md`.
+
+### Tareas: almacenamiento y listado
+
+`tarea.subir` acepta exclusivamente nombre y contenido además de las credenciales.
+No acepta propietario, usuario_id, rol ni rutas de escritura. El propietario se
+obtiene del Usuario autenticado, incluso cuando sube el administrador. El contenido
+viaja como string UTF-8, no base64. El servidor aplica las reglas de almacenamiento
+del Hito A: hasta 1 MiB, nombre normalizado a minúsculas de hasta 64 caracteres,
+extensión .gcode/.nc, texto compatible con XML y formato básico G/M. Las reglas
+completas y sus límites se mantienen en `docs/backlog/US-15.md`.
+
+El campo `resultado.id` es el identificador lógico `ID_propietario:nombre`, por
+ejemplo `2:pieza.nc`; no es una ruta y es diferente del id de correlación del sobre.
+`propietario` es el nombre de usuario obtenido del servidor. `OK` confirma que se
+publicó el archivo completo en el almacenamiento, no que sea ejecutable por el robot.
+
+`tarea.listar` responde, por ejemplo:
+
+```python
+{"tareas": [{"id": "2:pieza.nc", "nombre": "pieza.nc", "propietario": "ana"}]}
+```
+
+Cada fila contiene exactamente esos tres strings; no incluye contenido, rutas
+internas ni credenciales. Sin tareas devuelve `{"tareas": []}` con `OK`. Los
+resultados se ordenan por ID numérico de propietario y nombre. Una cuenta
+deshabilitada no puede subir ni listar aunque conserve una consola abierta.
+
+Se reutilizan los códigos: `VALIDACION` para parámetros, nombre, tamaño o contenido
+inválidos; `ESTADO_INVALIDO` para un duplicado del mismo propietario;
+`NO_AUTENTICADO` y `PERMISO_DENEGADO` según las reglas de acceso existentes;
+`ERROR_INTERNO` para fallos de almacenamiento o consulta de propietarios. Un ID de
+carpeta sin usuario en la base produce `ERROR_INTERNO`; esto no detecta IDs
+reutilizados, por lo que base de usuarios y tareas deben respaldarse juntas.
+Un error incluye `resultado.mensaje`, sin revelar contenido ni rutas internas.
+
+El directorio es configuración local: `--tareas-dir carpeta`, predeterminado
+`data/trayectorias`. Subir y listar se resuelven en ServicioProtegido y no se delegan
+a ServicioRobot. No requieren conexión ni un modo del robot. Un proceso escritor
+atiende las solicitudes secuencialmente; no se agregan reintentos automáticos.
+
+### Control serie existente
 
 El firmware espera `\r` como terminador de comando y responde con líneas de
 texto terminadas en `\r\n`. El servidor elimina los saltos de línea de la

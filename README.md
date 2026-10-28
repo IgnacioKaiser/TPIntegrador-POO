@@ -95,13 +95,33 @@ Desde la raíz:
 make -C server test
 ```
 
+US-15/US-16/US-24 permiten subir y listar tareas por RPC y desde Python. Las pruebas
+solo del repositorio se ejecutan con `mingw32-make -C server test-tareas` en Windows
+o `make -C server test-tareas` en Linux. La suite completa incluye el recorrido
+Python → servidor C++ → archivos temporales. Ver [US-15](docs/backlog/US-15.md).
+La base de usuarios y las carpetas de tareas por ID deben conservarse juntas para
+mantener sus propietarios; no reinicializar la base dejando las tareas anteriores.
+
+El servidor acepta `--tareas-dir carpeta`; su valor predeterminado es
+`data/trayectorias`. Los comandos del cliente son:
+
+```powershell
+python client/main.py subir "C:\ruta local\pieza.gcode"
+python client/main.py tareas
+```
+
+En Linux usar python3 y una ruta Linux. El menu ofrece las mismas operaciones en
+17/18 para ambos perfiles. Operador ve sus tareas; administrador ve todas. Subir
+no ejecuta ordenes. Para una prueba aislada con dos operadores y un administrador,
+sin usar la base habitual, ver [US-24](docs/backlog/US-24.md).
+
 También se puede ejecutar `make test` estando dentro de server. `make -C server examples` compila los tres ejemplos originales de XmlRpc++ como ejecutables separados. `make -C server clean` elimina server/build. Ctrl+Shift+B en VS Code compila desde server.
 
 ## Alcance conservado
 
 El cliente crea un MensajeRPC y lo serializa. XmlRpc++ recibe robot.intercambiar; el adaptador reconstruye el objeto C++, y el servicio conserva el ID de la solicitud en su respuesta. `ServicioRobot` delega las operaciones serie a una instancia de `Robot` compartida por el servidor. Ver docs/CONTRATO.md.
 
-Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado, seleccionar modos y controlar motores, origen, movimiento cartesiano y efector. Origen, movimiento y efector requieren modo manual y conexión. `estado` informa los modos seleccionados y marca expresamente como no disponibles los datos que el firmware no reporta. Ver `docs/CONTRATO.md` y `docs/backlog/US-10.md` a `US-13.md` para el contrato y las pruebas. Las carpetas data son una reserva de organización: no cambian las rutas internas del logger original, que aún no está activo.
+Se conserva la escucha en 127.0.0.1, el timeout del cliente, la validación de mensajes y la atención secuencial de métodos sobre conexiones multiplexadas. Las solicitudes requieren credenciales verificadas contra SQLite. Solo administradores pueden conectar o desconectar; los operadores autenticados pueden consultar el estado, seleccionar modos y controlar motores, origen, movimiento cartesiano y efector. Origen, movimiento y efector requieren modo manual y conexión. `estado` informa los modos seleccionados y marca expresamente como no disponibles los datos que el firmware no reporta. Ver `docs/CONTRATO.md` y `docs/backlog/US-10.md` a `US-13.md` para el contrato y las pruebas. El directorio de tareas ya almacena archivos; las rutas internas del logger original no cambian y el log completo sigue pendiente.
 
 Comandos de control por consola (requieren usuario y clave al iniciar):
 

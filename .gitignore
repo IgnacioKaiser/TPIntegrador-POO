@@ -10,3 +10,7 @@ __pycache__/
 # Base real de usuarios y auxiliares de SQLite
 /data/db/*.sqlite
 /data/db/*.sqlite-*
+
+# Tareas de ejecucion y temporales: conservar solo la carpeta vacia en Git.
+/data/trayectorias/*
+!/data/trayectorias/.gitkeep

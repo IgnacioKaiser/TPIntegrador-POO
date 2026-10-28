@@ -42,6 +42,8 @@ USER_OBJECTS := build/src/usuarios/repositorio_usuarios.o
 USER_LIBS := -lsqlite3 -lsodium
 USER_TOOL := build/usuarios_admin$(EXE)
 USER_TEST := build/test_usuarios$(EXE)
+TAREAS_OBJECTS := build/src/tareas/repositorio_tareas.o
+TAREAS_TEST := build/test_tareas$(EXE)
 APP_SOURCES := $(wildcard src/*.cpp) $(wildcard src/domain/*.cpp)
 RPC_OBJECTS := $(patsubst %.cpp,build/%.o,$(RPC_SOURCES))
 LOG_OBJECTS := $(patsubst %.cpp,build/%.o,$(LOG_SOURCES))
@@ -55,9 +57,9 @@ USER_DEPS := build/src/usuarios/autenticador.d build/src/usuarios/servicio_prote
 	build/tests/test_autenticacion.d $(USER_OBJECTS:.o=.d) \
 	build/tools/usuarios_admin.d build/tests/test_usuarios.d
 DEPS := $(RPC_OBJECTS:.o=.d) $(LOG_OBJECTS:.o=.d) $(APP_OBJECTS:.o=.d) \
-	build/tests/test_domain.d $(USER_DEPS)
+	build/tests/test_domain.d $(USER_DEPS) $(TAREAS_OBJECTS:.o=.d) build/tests/test_tareas.d
 
-.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion usuarios clean
+.PHONY: all libraries examples test test-unit test-usuarios test-autenticacion test-tareas usuarios clean
 all: $(SERVER) libraries $(USER_TOOL)
 libraries: $(RPC_LIB) $(LOG_LIB)
 
@@ -65,7 +67,7 @@ $(RPC_LIB): $(RPC_OBJECTS)
 	$(AR) rcs $(call argumento_ruta,$@) $(foreach archivo,$^,$(call argumento_ruta,$(archivo)))
 $(LOG_LIB): $(LOG_OBJECTS)
 	$(AR) rcs $(call argumento_ruta,$@) $(foreach archivo,$^,$(call argumento_ruta,$(archivo)))
-$(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o
+$(SERVER): $(APP_OBJECTS) $(RPC_LIB) $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(LDLIBS) $(USER_LIBS)
 build/%.o: %.cpp
 	$(crear_directorio)
@@ -81,7 +83,7 @@ build/examples/%$(EXE): xmlrpc/examples/%.cpp $(RPC_LIB)
 test-unit: $(DOMAIN_TEST)
 	$(ejecutar_prueba)
 	$(prueba_python) -m unittest discover -s $(call argumento_ruta,../client/tests) -v
-test: all test-unit test-usuarios test-autenticacion
+test: all test-unit test-usuarios test-autenticacion test-tareas
 	$(prueba_python) -m unittest discover -s tests -p "test_integration.py" -v
 usuarios: $(USER_TOOL)
 $(USER_TOOL): build/tools/usuarios_admin.o $(USER_OBJECTS)
@@ -90,10 +92,14 @@ $(USER_TEST): build/tests/test_usuarios.o $(USER_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(USER_LIBS)
 test-usuarios: $(USER_TOOL) $(USER_TEST)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_usuarios.py)
-build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
+build/test_autenticacion$(EXE): build/tests/test_autenticacion.o $(USER_OBJECTS) $(TAREAS_OBJECTS) build/src/usuarios/autenticador.o build/src/usuarios/servicio_protegido.o $(DOMAIN_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS) $(USER_LIBS)
 test-autenticacion: build/test_autenticacion$(EXE)
 	$(prueba_python) $(call argumento_ruta,tests/ejecutar_autenticacion.py)
+$(TAREAS_TEST): build/tests/test_tareas.o $(TAREAS_OBJECTS)
+	$(CXX) $(CXXFLAGS) $(foreach archivo,$^,$(call argumento_ruta,$(archivo))) -o $(call argumento_ruta,$@) $(LDFLAGS)
+test-tareas: $(TAREAS_TEST)
+	$(prueba_python) $(call argumento_ruta,tests/ejecutar_tareas.py)
 clean:
 	$(limpiar)
 -include $(DEPS)

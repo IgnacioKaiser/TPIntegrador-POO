@@ -212,7 +212,7 @@ class CliUS23Tests(unittest.TestCase):
             retorno = main(["activar_motores"])
         self.assertEqual(retorno, 1)
         self.assertNotIn("[OK]", salida.getvalue())
-        self.assertIn("Ejecucion no confirmada", errores.getvalue())
+        self.assertIn("Resultado no confirmado", errores.getvalue())
         self.assertNotIn("ClaveFicticia1", salida.getvalue() + errores.getvalue())
         intento.assert_called_once()
 
