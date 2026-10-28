@@ -254,3 +254,57 @@ de cuatro subidas al mismo nombre/propietario solo una puede publicar. No se
 amplia el alcance a varios procesos escritores ni se agregan bloqueos nuevos.
 Se conserva la necesidad de respaldar juntos usuarios y carpetas; no se implementan
 edicion, borrado, descarga ni ejecucion automatica.
+
+## D13. Registro CSV acumulativo y consultas administrativas
+
+Fecha: 28/10/2026. Decisiones observadas en `b155927`, revisadas en
+`revision-logs-informes` (`bbb845f`); no integradas a master en esta revisión.
+El formato, las rutas y el alcance se mantienen en
+[US-18/US-20/US-21](backlog/US-18-20-21.md); el detalle RPC está en CONTRATO.md.
+
+CSV es texto organizado en filas y columnas separadas por comas. Se usa para el
+registro acumulativo que exige la consigna, página 3: se agregan filas y se conserva
+el archivo al reiniciar. RegistroActividadCsv encapsula lectura, escritura y escape
+de comas y comillas, con streams y herramientas estándar de C++17, sin nuevas
+bibliotecas. El logger del TP anterior sigue compilándose, pero no genera este
+registro. Guardarlo solo en SQLite no cumpliría literalmente el CSV pedido;
+mantener además una tabla duplicaría datos y exigiría sincronizar ambos formatos.
+El costo elegido es recorrer todo el archivo en cada consulta y administrar su
+crecimiento, ya que no hay rotación ni límite de tamaño automático.
+
+Las fechas se guardan en UTC (una referencia horaria común, independiente del
+huso local), con sufijo `Z`. Los filtros toman días completos en esa misma escala,
+para evitar que equipos con distinta hora local interpreten rangos diferentes.
+El usuario debe convertir sus fechas locales si necesita un rango local preciso;
+la marca depende del reloj del servidor y no garantiza sincronización externa.
+
+Se reutiliza la identidad devuelta por Autenticador, después de validar también
+la habilitación. No se atribuyen intentos fallidos al nombre declarado por el
+cliente: quedan sin usuario verificado. Esto amplía D06 al registro e impide que
+un intento con credenciales falsas incremente el informe de otra cuenta.
+Las consultas requieren administrador en ServicioProtegido, antes de leer el CSV;
+ocultarlas en el menú solo adapta la presentación. No se agregan sesiones ni
+campos al sobre RPC. El nodo se fija a loopback por la escucha actual; admitir
+clientes remotos requerirá obtener su dirección real del transporte.
+
+D04 ya prohíbe registrar claves y hashes. Se extiende esa omisión a parámetros,
+contenido de tareas y texto de eco: el registro guarda operación, código y un
+detalle genérico. Se reduce así la exposición de datos; a cambio, el CSV no permite
+reconstruir argumentos ni trayectorias y no demuestra movimientos físicos.
+El informe cuenta respuestas de peticiones autenticadas, no sesiones ni órdenes
+desde la última conexión. Los requisitos de reporte aún no cubiertos se explican
+en ESTADO_PROYECTO.md; esta decisión no los elimina.
+
+Un mutex (bloqueo de la biblioteca estándar) evita que lecturas y escrituras del
+mismo objeto se intercalen dentro del proceso. No coordina servidores distintos;
+se conserva un único proceso escritor. La paginación limita la respuesta, pero
+no el barrido del CSV ni el tamaño total del informe. No hay índice, instantáneas
+entre consultas ni garantías frente a cortes de energía. Los límites RPC y la
+saturación de contadores a int32 se describen en CONTRATO.md.
+
+Si falla el registro de una petición, se conserva la respuesta de la operación
+y se advierte en stderr: devolver un error de registro como si hubiera fallado
+el movimiento podría motivar repetir una orden ya ejecutada. El costo es que
+la auditoría deja de ser completa hasta resolver el fallo. Los errores de creación
+del registro o de escritura de eventos de inicio/cierre pueden impedir el arranque
+o el cierre normal; esos casos no tienen la misma recuperación que una petición.
